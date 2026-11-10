@@ -299,7 +299,12 @@ async function runAcceptanceTests() {
   }
 }
 
-runAcceptanceTests().catch((err) => {
-  console.error('Acceptance test failed:', err);
-  process.exit(1);
-});
+runAcceptanceTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('Acceptance test failed:', err);
+    process.exit(1);
+  });
+
