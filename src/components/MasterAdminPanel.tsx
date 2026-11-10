@@ -21,6 +21,7 @@ import {
   Download,
   RefreshCw,
 } from 'lucide-react';
+import { ComponentErrorBoundary, LoadingSkeleton, EmptyState, PageTransition } from './UIStateComponents.tsx';
 
 type AdminModule =
   | 'overview'
@@ -161,11 +162,14 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
     setTimeout(() => setBanner(null), 4000);
   };
 
+  const [isModLoading, setIsModLoading] = useState(false);
+
   useEffect(() => {
     loadModule(activeMod);
   }, [activeMod]);
 
   const loadModule = async (mod: AdminModule) => {
+    setIsModLoading(true);
     try {
       if (mod === 'overview') {
         const d = await fetch('/api/admin/dashboard').then((r) => r.json());
@@ -234,6 +238,8 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
       }
     } catch (e) {
       notify('err', (e as Error).message);
+    } finally {
+      setIsModLoading(false);
     }
   };
 
@@ -405,6 +411,23 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
           </div>
         )}
 
+        <ComponentErrorBoundary
+          fallbackTitle="Admin Module Error"
+          fallbackMessage="An issue occurred loading this admin module. You can retry or select another module."
+        >
+          <PageTransition tabKey={activeMod}>
+            {isModLoading ? (
+              <LoadingSkeleton
+                type={
+                  activeMod === 'overview'
+                    ? 'overview'
+                    : activeMod === 'users' || activeMod === 'withdrawals' || activeMod === 'finance' || activeMod === 'reports'
+                    ? 'table'
+                    : 'cards'
+                }
+              />
+            ) : (
+              <>
         {/* ================================================================= */}
         {/* 16.2 ADMIN DASHBOARD (17 LIVE DATABASE STATISTICS)                */}
         {/* ================================================================= */}
@@ -1182,67 +1205,76 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
               </button>
             </div>
 
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>User Name &amp; Contact</th>
-                    <th>Affiliate Code</th>
-                    <th>Locked Sponsor</th>
-                    <th>Available Commission</th>
-                    <th>KYC Status</th>
-                    <th>Account Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {usersList.map((u) => (
-                    <tr key={u.id}>
-                      <td className="mono">#{u.id}</td>
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{u.full_name}</div>
-                        <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                          {u.email} · {u.mobile}
-                        </div>
-                      </td>
-                      <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
-                        {u.affiliate_code}
-                      </td>
-                      <td className="mono">{u.referred_by_code || 'COMPANY DIRECT'}</td>
-                      <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
-                        ₹{Number(u.available_commission_inr || 0).toLocaleString('en-IN')}
-                      </td>
-                      <td>
-                        <span className="status-badge badge-neutral">{u.kyc_status || 'not_submitted'}</span>
-                      </td>
-                      <td>
-                        <span className={`status-badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
-                          {u.status}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={async () => {
-                            const nextStatus = u.status === 'active' ? 'suspended' : 'active';
-                            await fetch(`/api/admin/users/${u.id}`, {
-                              method: 'PUT',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ status: nextStatus }),
-                            });
-                            notify('ok', `User #${u.id} status updated to ${nextStatus}`);
-                            loadModule('users');
-                          }}
-                        >
-                          {u.status === 'active' ? 'Suspend' : 'Activate'}
-                        </button>
-                      </td>
+            {usersList.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No Users Found"
+                description="No user records match the current filter or search term."
+                badge="User Management"
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>User Name &amp; Contact</th>
+                      <th>Affiliate Code</th>
+                      <th>Locked Sponsor</th>
+                      <th>Available Commission</th>
+                      <th>KYC Status</th>
+                      <th>Account Status</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {usersList.map((u) => (
+                      <tr key={u.id}>
+                        <td className="mono">#{u.id}</td>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{u.full_name}</div>
+                          <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {u.email} · {u.mobile}
+                          </div>
+                        </td>
+                        <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+                          {u.affiliate_code}
+                        </td>
+                        <td className="mono">{u.referred_by_code || 'COMPANY DIRECT'}</td>
+                        <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                          ₹{Number(u.available_commission_inr || 0).toLocaleString('en-IN')}
+                        </td>
+                        <td>
+                          <span className="status-badge badge-neutral">{u.kyc_status || 'not_submitted'}</span>
+                        </td>
+                        <td>
+                          <span className={`status-badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
+                            {u.status}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={async () => {
+                              const nextStatus = u.status === 'active' ? 'suspended' : 'active';
+                              await fetch(`/api/admin/users/${u.id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: nextStatus }),
+                              });
+                              notify('ok', `User #${u.id} status updated to ${nextStatus}`);
+                              loadModule('users');
+                            }}
+                          >
+                            {u.status === 'active' ? 'Suspend' : 'Activate'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -1377,7 +1409,15 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
               </button>
             </div>
 
-            <div className="table-wrap">
+            {withdrawalsList.length === 0 ? (
+              <EmptyState
+                icon={Wallet}
+                title="No Withdrawal Requests"
+                description="There are currently no withdrawal payout requests in the queue."
+                badge="Payout Ledger"
+              />
+            ) : (
+              <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -1488,8 +1528,9 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
         {/* ================================================================= */}
         {/* 16.13 KYC MANAGEMENT                                              */}
@@ -1501,7 +1542,15 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
               <h2>KYC Submissions Review</h2>
             </div>
 
-            <div className="table-wrap">
+            {kycList.length === 0 ? (
+              <EmptyState
+                icon={ShieldAlert}
+                title="No KYC Submissions"
+                description="There are currently no identity documents awaiting verification."
+                badge="Compliance Queue"
+              />
+            ) : (
+              <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -1588,8 +1637,9 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
         {/* ================================================================= */}
         {/* 16.15 OFFERS & BATCH MANAGEMENT                                   */}
@@ -1911,6 +1961,10 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
             </div>
           </div>
         )}
+              </>
+            )}
+          </PageTransition>
+        </ComponentErrorBoundary>
       </main>
     </div>
   );

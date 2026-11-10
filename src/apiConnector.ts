@@ -1,6 +1,6 @@
 import { DEFAULT_SITE_DATA } from './defaultSiteData.ts';
 
-const STORAGE_KEY = 'edurt_json_db_v2';
+const STORAGE_KEY = 'edurt_json_db_v3';
 
 interface LocalDbState {
   users: any[];
@@ -1224,21 +1224,27 @@ export function setupResilientJsonFetch(): void {
       credentials: init?.credentials || 'same-origin',
     };
 
-    // 1. Try primary /api/... endpoint
-    try {
-      const res1 = await originalFetch(rawUrl, reqInit);
-      const contentType1 = res1.headers.get('content-type') || '';
-      if (contentType1.includes('application/json') && res1.status < 500) {
-        const cloneText = await res1.clone().text();
-        try {
-          JSON.parse(cloneText);
-          return res1;
-        } catch {
-          // Invalid JSON body, fall through to PHP gateway / local fallback
+    // 1. Try primary /api/... endpoint with retry logic and exponential backoff
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res1 = await originalFetch(rawUrl, reqInit);
+        const contentType1 = res1.headers.get('content-type') || '';
+        if (contentType1.includes('application/json') && res1.status < 500) {
+          const cloneText = await res1.clone().text();
+          try {
+            JSON.parse(cloneText);
+            return res1;
+          } catch {
+            // Invalid JSON body, fall through to PHP gateway / local fallback
+            break;
+          }
+        }
+      } catch {
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, 100 * Math.pow(2, attempt)));
         }
       }
-    } catch {
-      // Network error on primary route, fall through
     }
 
     // 2. Try explicit Hostinger PHP file gateway (/api/index.php?_route=...) in case .htaccess rewrite was bypassed

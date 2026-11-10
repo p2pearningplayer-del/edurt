@@ -28,6 +28,7 @@ import {
   Edit3,
 } from 'lucide-react';
 import type { PendingOrderInfo } from './AuthAndCheckoutModals.tsx';
+import { ComponentErrorBoundary, LoadingSkeleton, EmptyState, PageTransition } from './UIStateComponents.tsx';
 
 export type DashboardTab =
   | 'dashboard'
@@ -213,9 +214,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [offersData, setOffersData] = useState<{ batches: any[]; offers: any[] }>({ batches: [], offers: [] });
   const [notificationsList, setNotificationsList] = useState<any[]>([]);
   const [devEmailsList, setDevEmailsList] = useState<any[]>([]);
+  const [isTabLoading, setIsTabLoading] = useState(false);
 
-  // Fetch data when tab changes
+  // Fetch data when tab changes with smooth loading state
   useEffect(() => {
+    setIsTabLoading(true);
+    let isCancelled = false;
+    const finish = () => {
+      if (!isCancelled) setIsTabLoading(false);
+    };
+
     if (activeTab === 'dashboard') {
       const qs =
         graphRange === 'custom' && customStart && customEnd
@@ -228,7 +236,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setOverview(d);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'account') {
       fetch('/api/user/profile')
         .then((r) => (r.ok ? r.json() : null))
@@ -240,7 +249,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setEditPhoto(d.profile.profile_photo || '');
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'affiliate') {
       Promise.all([
         fetch('/api/affiliate/summary').then((r) => (r.ok ? r.json() : null)),
@@ -252,7 +262,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           if (refs && Array.isArray(refs.referrals)) setReferralsList(refs.referrals);
           if (comms && Array.isArray(comms.commissions)) setCommissionsList(comms.commissions);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'courses') {
       fetch('/api/courses')
         .then((r) => (r.ok ? r.json() : null))
@@ -264,7 +275,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'trading') {
       fetch('/api/trading-videos')
         .then((r) => (r.ok ? r.json() : null))
@@ -276,11 +288,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             }
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'withdrawal') {
-      loadWithdrawals();
+      loadWithdrawals().finally(finish);
     } else if (activeTab === 'kyc') {
-      loadKyc();
+      loadKyc().finally(finish);
     } else if (activeTab === 'leaderboard') {
       fetch(`/api/leaderboard?period=${lbPeriod}`)
         .then((r) => (r.ok ? r.json() : null))
@@ -289,24 +302,33 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             setLeaderboardData(d);
           }
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'community') {
       fetch('/api/community')
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d && Array.isArray(d.links)) setCommunityLinks(d.links);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'offers') {
       fetch('/api/offers')
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d && Array.isArray(d.offers)) setOffersData(d);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(finish);
     } else if (activeTab === 'notifications') {
-      loadNotifications();
+      loadNotifications().finally(finish);
+    } else {
+      finish();
     }
+
+    return () => {
+      isCancelled = true;
+    };
   }, [activeTab, graphRange, customStart, customEnd, lbPeriod]);
 
   useEffect(() => {
@@ -733,6 +755,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           </div>
         )}
 
+        <ComponentErrorBoundary
+          fallbackTitle="Dashboard Section Temporarily Unavailable"
+          fallbackMessage="An unexpected issue occurred while rendering this module. You can reload or navigate to another tab."
+        >
+          <PageTransition tabKey={activeTab}>
+            {isTabLoading ? (
+              <LoadingSkeleton
+                type={
+                  activeTab === 'dashboard'
+                    ? 'overview'
+                    : activeTab === 'courses'
+                    ? 'courseCard'
+                    : activeTab === 'affiliate' || activeTab === 'withdrawal' || activeTab === 'leaderboard'
+                    ? 'table'
+                    : 'cards'
+                }
+              />
+            ) : (
+              <>
         {/* ================================================================= */}
         {/* TAB 1: DASHBOARD OVERVIEW (PRD Section 6.1 - 6.3)                 */}
         {/* ================================================================= */}
@@ -1268,81 +1309,101 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem' }}>
                 Direct Referral Report (Privacy-Masked Contact Details)
               </h3>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Referral Name</th>
-                      <th>Privacy-Masked Contact</th>
-                      <th>Registration Date</th>
-                      <th>Package Purchased</th>
-                      <th>Purchase Status</th>
-                      <th>Commission (70% Gross)</th>
-                      <th>Commission Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {referralsList.map((r) => (
-                      <tr key={r.id}>
-                        <td style={{ fontWeight: 600 }}>{r.referralName}</td>
-                        <td className="mono" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                          {r.maskedContact}
-                        </td>
-                        <td className="mono">{String(r.registrationDate).slice(0, 10)}</td>
-                        <td>{r.packagePurchased}</td>
-                        <td>
-                          <span className={`status-badge ${r.purchaseStatus === 'Completed' ? 'badge-success' : 'badge-warning'}`}>
-                            {r.purchaseStatus}
-                          </span>
-                        </td>
-                        <td className="mono" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
-                          ₹{Number(r.commissionGeneratedInr).toLocaleString('en-IN')}
-                        </td>
-                        <td>
-                          <span className="status-badge badge-success">{r.commissionStatus}</span>
-                        </td>
+              {referralsList.length === 0 ? (
+                <EmptyState
+                  icon={Share2}
+                  title="No Referrals Registered Yet"
+                  description="Share your permanent affiliate link or 6-character code with your audience. Once they register and complete their package enrollment, their referral record will appear here."
+                  actionText="Copy Referral Link"
+                  onAction={() => copyToClipboard(referralUrl, 'link')}
+                  badge="Affiliate Network"
+                />
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Referral Name</th>
+                        <th>Privacy-Masked Contact</th>
+                        <th>Registration Date</th>
+                        <th>Package Purchased</th>
+                        <th>Purchase Status</th>
+                        <th>Commission (70% Gross)</th>
+                        <th>Commission Status</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {referralsList.map((r) => (
+                        <tr key={r.id}>
+                          <td style={{ fontWeight: 600 }}>{r.referralName}</td>
+                          <td className="mono" style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            {r.maskedContact}
+                          </td>
+                          <td className="mono">{String(r.registrationDate).slice(0, 10)}</td>
+                          <td>{r.packagePurchased}</td>
+                          <td>
+                            <span className={`status-badge ${r.purchaseStatus === 'Completed' ? 'badge-success' : 'badge-warning'}`}>
+                              {r.purchaseStatus}
+                            </span>
+                          </td>
+                          <td className="mono" style={{ fontWeight: 600, color: 'var(--color-primary)' }}>
+                            ₹{Number(r.commissionGeneratedInr).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            <span className="status-badge badge-success">{r.commissionStatus}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
 
             {/* Commission Transaction History */}
             <div>
               <h3 style={{ fontSize: '1.15rem', marginBottom: '0.75rem' }}>Commission Transaction Ledger</h3>
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Commission Ref</th>
-                      <th>Referred Learner</th>
-                      <th>Package</th>
-                      <th>Gross Price</th>
-                      <th>Your 70% Share</th>
-                      <th>Status</th>
-                      <th>Credited Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {commissionsList.map((c) => (
-                      <tr key={c.id}>
-                        <td className="mono">{c.commission_ref}</td>
-                        <td>{c.referred_user_name}</td>
-                        <td>{c.package_name}</td>
-                        <td className="mono">₹{Number(c.gross_package_price_inr).toLocaleString('en-IN')}</td>
-                        <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
-                          +₹{Number(c.referrer_amount_inr).toLocaleString('en-IN')}
-                        </td>
-                        <td>
-                          <span className="status-badge badge-success">{c.status}</span>
-                        </td>
-                        <td className="mono">{String(c.credited_at).slice(0, 16)}</td>
+              {commissionsList.length === 0 ? (
+                <EmptyState
+                  icon={Wallet}
+                  title="No Commission Transactions Yet"
+                  description="Whenever a learner registers with your sponsor code and completes a package purchase via Razorpay, your 70% gross share is credited here immediately."
+                  badge="Commission Ledger"
+                />
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Commission Ref</th>
+                        <th>Referred Learner</th>
+                        <th>Package</th>
+                        <th>Gross Price</th>
+                        <th>Your 70% Share</th>
+                        <th>Status</th>
+                        <th>Credited Timestamp</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {commissionsList.map((c) => (
+                        <tr key={c.id}>
+                          <td className="mono">{c.commission_ref}</td>
+                          <td>{c.referred_user_name}</td>
+                          <td>{c.package_name}</td>
+                          <td className="mono">₹{Number(c.gross_package_price_inr).toLocaleString('en-IN')}</td>
+                          <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                            +₹{Number(c.referrer_amount_inr).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            <span className="status-badge badge-success">{c.status}</span>
+                          </td>
+                          <td className="mono">{String(c.credited_at).slice(0, 16)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1352,6 +1413,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
         {/* ================================================================= */}
         {activeTab === 'courses' && (
           <div>
+            {coursesList.length === 0 ? (
+              <EmptyState
+                icon={BookOpen}
+                title="No Enrolled Courses Found"
+                description="You are not enrolled in any learning packages yet. Select an executive learning curriculum to unlock lifetime streaming lessons, interactive quizzes, and verifiable certificates."
+                actionText="Explore Packages & Enroll"
+                onAction={onOpenCheckout}
+                badge="Curriculum Studio"
+              />
+            ) : (
+              <>
             <div
               style={{
                 display: 'flex',
@@ -1860,6 +1932,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                 )}
               </div>
             )}
+              </>
+            )}
           </div>
         )}
 
@@ -1918,29 +1992,38 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </div>
             )}
 
-            <div className="grid-3">
-              {tradingData.videos
-                .filter((v) => tradingCategoryFilter === 'All' || v.category === tradingCategoryFilter)
-                .map((v) => (
-                  <div
-                    key={v.id}
-                    className="package-card"
-                    style={{ cursor: 'pointer' }}
-                    onClick={() => setActiveTradingVideo(v)}
-                  >
-                    <div className="package-media" style={{ height: '160px' }}>
-                      <img src={v.thumbnail_url} alt={v.title} />
+            {tradingData.videos.length === 0 ? (
+              <EmptyState
+                icon={TrendingUp}
+                title="No Trading Modules Available"
+                description="Educational market microstructure walkthroughs and position sizing masterclasses are being refreshed. Check back shortly."
+                badge="Market Literacy"
+              />
+            ) : (
+              <div className="grid-3">
+                {tradingData.videos
+                  .filter((v) => tradingCategoryFilter === 'All' || v.category === tradingCategoryFilter)
+                  .map((v) => (
+                    <div
+                      key={v.id}
+                      className="package-card"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => setActiveTradingVideo(v)}
+                    >
+                      <div className="package-media" style={{ height: '160px' }}>
+                        <img src={v.thumbnail_url} alt={v.title} />
+                      </div>
+                      <div className="package-body">
+                        <span className="status-badge badge-neutral" style={{ alignSelf: 'flex-start', marginBottom: '0.4rem' }}>
+                          {v.category}
+                        </span>
+                        <h4 style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>{v.title}</h4>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{v.description}</p>
+                      </div>
                     </div>
-                    <div className="package-body">
-                      <span className="status-badge badge-neutral" style={{ alignSelf: 'flex-start', marginBottom: '0.4rem' }}>
-                        {v.category}
-                      </span>
-                      <h4 style={{ fontSize: '1rem', marginBottom: '0.4rem' }}>{v.title}</h4>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{v.description}</p>
-                    </div>
-                  </div>
-                ))}
-            </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2139,119 +2222,152 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
             </div>
 
             {wdrActiveTable === 'available' && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Reference ID</th>
-                      <th>Transaction Type</th>
-                      <th>Direction</th>
-                      <th>Amount</th>
-                      <th>Balance After</th>
-                      <th>Description</th>
-                      <th>Timestamp</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {withdrawalData.tables.availableBalanceLedger.map((tx: any) => (
-                      <tr key={tx.id}>
-                        <td className="mono">{tx.reference_id}</td>
-                        <td className="mono">{tx.tx_type}</td>
-                        <td>
-                          <span className={`status-badge ${tx.direction === 'credit' ? 'badge-success' : 'badge-warning'}`}>
-                            {tx.direction.toUpperCase()}
-                          </span>
-                        </td>
-                        <td className="mono" style={{ fontWeight: 600 }}>
-                          {tx.direction === 'credit' ? '+' : '-'}₹{Number(tx.amount_inr).toLocaleString('en-IN')}
-                        </td>
-                        <td className="mono">₹{Number(tx.balance_after_inr).toLocaleString('en-IN')}</td>
-                        <td>{tx.description}</td>
-                        <td className="mono">{String(tx.created_at).slice(0, 16)}</td>
+              withdrawalData.tables.availableBalanceLedger.length === 0 ? (
+                <EmptyState
+                  icon={Wallet}
+                  title="No Ledger Records"
+                  description="Your Available Balance ledger tracks credits from 70% direct referral commissions, debit reservations for payouts, and balance adjustments."
+                  badge="Available Balance"
+                />
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Reference ID</th>
+                        <th>Transaction Type</th>
+                        <th>Direction</th>
+                        <th>Amount</th>
+                        <th>Balance After</th>
+                        <th>Description</th>
+                        <th>Timestamp</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {withdrawalData.tables.availableBalanceLedger.map((tx: any) => (
+                        <tr key={tx.id}>
+                          <td className="mono">{tx.reference_id}</td>
+                          <td className="mono">{tx.tx_type}</td>
+                          <td>
+                            <span className={`status-badge ${tx.direction === 'credit' ? 'badge-success' : 'badge-warning'}`}>
+                              {tx.direction.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="mono" style={{ fontWeight: 600 }}>
+                            {tx.direction === 'credit' ? '+' : '-'}₹{Number(tx.amount_inr).toLocaleString('en-IN')}
+                          </td>
+                          <td className="mono">₹{Number(tx.balance_after_inr).toLocaleString('en-IN')}</td>
+                          <td>{tx.description}</td>
+                          <td className="mono">{String(tx.created_at).slice(0, 16)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
 
             {(wdrActiveTable === 'pending' || wdrActiveTable === 'rejected' || wdrActiveTable === 'completed') && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Request Ref</th>
-                      <th>Amount</th>
-                      <th>Method &amp; Account</th>
-                      <th>Status</th>
-                      <th>UTR / Rejection Reason</th>
-                      <th>Business Date (IST)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(wdrActiveTable === 'pending'
-                      ? withdrawalData.tables.pendingWithdrawals
-                      : wdrActiveTable === 'rejected'
-                        ? withdrawalData.tables.rejectedWithdrawals
-                        : withdrawalData.tables.completedWithdrawals
-                    ).map((w: any) => (
-                      <tr key={w.id}>
-                        <td className="mono">{w.request_ref}</td>
-                        <td className="mono" style={{ fontWeight: 600 }}>
-                          ₹{Number(w.amount_inr).toLocaleString('en-IN')}
-                        </td>
-                        <td>
-                          {w.payout_method === 'upi'
-                            ? `UPI: ${w.upi_id}`
-                            : `${w.bank_name} · ${w.account_number} (${w.ifsc_code})`}
-                        </td>
-                        <td>
-                          <span
-                            className={`status-badge ${
-                              w.status === 'paid'
-                                ? 'badge-success'
-                                : w.status === 'rejected'
-                                  ? 'badge-danger'
-                                  : 'badge-warning'
-                            }`}
-                          >
-                            {w.status.toUpperCase()}
-                          </span>
-                        </td>
-                        <td>{w.payment_reference || w.rejection_reason || 'Queued for Review'}</td>
-                        <td className="mono">{w.business_date_ist}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              (() => {
+                const list =
+                  wdrActiveTable === 'pending'
+                    ? withdrawalData.tables.pendingWithdrawals
+                    : wdrActiveTable === 'rejected'
+                      ? withdrawalData.tables.rejectedWithdrawals
+                      : withdrawalData.tables.completedWithdrawals;
+                if (list.length === 0) {
+                  return (
+                    <EmptyState
+                      icon={Wallet}
+                      title={`No ${wdrActiveTable.charAt(0).toUpperCase() + wdrActiveTable.slice(1)} Withdrawals`}
+                      description={`There are currently no withdrawal requests in ${wdrActiveTable} status.`}
+                      badge="Withdrawal Status"
+                    />
+                  );
+                }
+                return (
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Request Ref</th>
+                          <th>Amount</th>
+                          <th>Method &amp; Account</th>
+                          <th>Status</th>
+                          <th>UTR / Rejection Reason</th>
+                          <th>Business Date (IST)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.map((w: any) => (
+                          <tr key={w.id}>
+                            <td className="mono">{w.request_ref}</td>
+                            <td className="mono" style={{ fontWeight: 600 }}>
+                              ₹{Number(w.amount_inr).toLocaleString('en-IN')}
+                            </td>
+                            <td>
+                              {w.payout_method === 'upi'
+                                ? `UPI: ${w.upi_id}`
+                                : `${w.bank_name} · ${w.account_number} (${w.ifsc_code})`}
+                            </td>
+                            <td>
+                              <span
+                                className={`status-badge ${
+                                  w.status === 'paid'
+                                    ? 'badge-success'
+                                    : w.status === 'rejected'
+                                      ? 'badge-danger'
+                                      : 'badge-warning'
+                                }`}
+                              >
+                                {w.status.toUpperCase()}
+                              </span>
+                            </td>
+                            <td>{w.payment_reference || w.rejection_reason || 'Queued for Review'}</td>
+                            <td className="mono">{w.business_date_ist}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
             )}
 
             {wdrActiveTable === 'bonus' && (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Bonus Ref</th>
-                      <th>Amount</th>
-                      <th>Reason</th>
-                      <th>Credited Date</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {withdrawalData.tables.bonusTransactions.map((b: any) => (
-                      <tr key={b.id}>
-                        <td className="mono">{b.reference_id}</td>
-                        <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
-                          +₹{Number(b.amount_inr).toLocaleString('en-IN')}
-                        </td>
-                        <td>{b.reason}</td>
-                        <td className="mono">{String(b.created_at).slice(0, 16)}</td>
+              withdrawalData.tables.bonusTransactions.length === 0 ? (
+                <EmptyState
+                  icon={Wallet}
+                  title="No Bonus Transactions"
+                  description="Promotional performance bonuses and campaign incentives credited to your account will be listed here separately."
+                  badge="Bonus Amount"
+                />
+              ) : (
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Bonus Ref</th>
+                        <th>Amount</th>
+                        <th>Reason</th>
+                        <th>Credited Date</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {withdrawalData.tables.bonusTransactions.map((b: any) => (
+                        <tr key={b.id}>
+                          <td className="mono">{b.reference_id}</td>
+                          <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+                            +₹{Number(b.amount_inr).toLocaleString('en-IN')}
+                          </td>
+                          <td>{b.reason}</td>
+                          <td className="mono">{String(b.created_at).slice(0, 16)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
           </div>
         )}
@@ -2453,34 +2569,43 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </div>
             </div>
 
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Rank</th>
-                    <th>Partner</th>
-                    <th>State</th>
-                    <th>Verified Referral Conversions</th>
-                    <th>Eligible Commission Earned</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {leaderboardData.entries.map((e: any) => (
-                    <tr key={e.userId}>
-                      <td>
-                        <span className="status-badge badge-warning">#{e.rank}</span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{e.userName}</td>
-                      <td>{e.state}</td>
-                      <td className="mono">{e.referralSalesCount} Sales</td>
-                      <td className="mono" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-                        ₹{Number(e.eligibleEarningsInr).toLocaleString('en-IN')}
-                      </td>
+            {leaderboardData.entries.length === 0 ? (
+              <EmptyState
+                icon={Trophy}
+                title="Leaderboard Being Calculated"
+                description="The verified partner performance rankings are being refreshed. Refer learners to earn direct commissions and claim a spot on the leaderboard."
+                badge="Partner Rankings"
+              />
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Partner</th>
+                      <th>State</th>
+                      <th>Verified Referral Conversions</th>
+                      <th>Eligible Commission Earned</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {leaderboardData.entries.map((e: any) => (
+                      <tr key={e.userId}>
+                        <td>
+                          <span className="status-badge badge-warning">#{e.rank}</span>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{e.userName}</td>
+                        <td>{e.state}</td>
+                        <td className="mono">{e.referralSalesCount} Sales</td>
+                        <td className="mono" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
+                          ₹{Number(e.eligibleEarningsInr).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
@@ -2493,23 +2618,32 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <span className="eyebrow-label">OFFICIAL SOCIAL CHANNELS</span>
               <h2>Edurt Executive Community</h2>
             </div>
-            <div className="grid-3">
-              {communityLinks.map((c) => (
-                <div key={c.id} className="surface-card surface-card-interactive">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-                    <span className="status-badge badge-success">{c.platform}</span>
-                    <span className="mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      {c.subscriber_count_label}
-                    </span>
+            {communityLinks.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="Community Channels Updating"
+                description="Official VIP WhatsApp and Telegram channels are being configured. Check back soon for exclusive cohort access."
+                badge="Partner Network"
+              />
+            ) : (
+              <div className="grid-3">
+                {communityLinks.map((c) => (
+                  <div key={c.id} className="surface-card surface-card-interactive">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+                      <span className="status-badge badge-success">{c.platform}</span>
+                      <span className="mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {c.subscriber_count_label}
+                      </span>
+                    </div>
+                    <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>{c.label}</h3>
+                    <a href={c.url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ width: '100%' }}>
+                      <span>Open Official Channel</span>
+                      <ExternalLink size={14} />
+                    </a>
                   </div>
-                  <h3 style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>{c.label}</h3>
-                  <a href={c.url} target="_blank" rel="noreferrer" className="btn btn-secondary" style={{ width: '100%' }}>
-                    <span>Open Official Channel</span>
-                    <ExternalLink size={14} />
-                  </a>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2522,27 +2656,36 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               <span className="eyebrow-label">PROMOTIONAL COHORTS &amp; 16:9 BANNERS</span>
               <h2>Active Offers &amp; Batches</h2>
             </div>
-            <div className="grid-2">
-              {offersData.offers.map((o: any) => (
-                <div key={o.id} className="package-card">
-                  <div className="package-media" style={{ aspectRatio: '16/9', height: 'auto' }}>
-                    <img src={o.banner_url} alt={o.title} />
-                  </div>
-                  <div className="package-body">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
-                      <span className="status-badge badge-warning">{o.batch_type}</span>
-                      <span className="status-badge badge-success">{o.promo_badge}</span>
+            {offersData.offers.length === 0 ? (
+              <EmptyState
+                icon={Tag}
+                title="No Active Special Offers"
+                description="There are currently no active promotional incentive batches or discounts. Stay tuned for upcoming seasonal campaigns."
+                badge="Promotional Batches"
+              />
+            ) : (
+              <div className="grid-2">
+                {offersData.offers.map((o: any) => (
+                  <div key={o.id} className="package-card">
+                    <div className="package-media" style={{ aspectRatio: '16/9', height: 'auto' }}>
+                      <img src={o.banner_url} alt={o.title} />
                     </div>
-                    <h3 style={{ fontSize: '1.2rem', marginBottom: '0.4rem' }}>{o.title}</h3>
-                    <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>{o.description}</p>
-                    <div className="mono" style={{ fontSize: '0.8rem', color: 'var(--color-accent)' }}>
-                      <Clock size={13} style={{ display: 'inline', marginRight: '5px' }} />
-                      Valid Until: {String(o.end_at).slice(0, 10)}
+                    <div className="package-body">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                        <span className="status-badge badge-warning">{o.batch_type}</span>
+                        <span className="status-badge badge-success">{o.promo_badge}</span>
+                      </div>
+                      <h3 style={{ fontSize: '1.2rem', marginBottom: '0.4rem' }}>{o.title}</h3>
+                      <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', marginBottom: '0.85rem' }}>{o.description}</p>
+                      <div className="mono" style={{ fontSize: '0.8rem', color: 'var(--color-accent)' }}>
+                        <Clock size={13} style={{ display: 'inline', marginRight: '5px' }} />
+                        Valid Until: {String(o.end_at).slice(0, 10)}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2568,47 +2711,72 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
               </button>
             </div>
 
-            <div className="grid-2">
-              <div>
-                <h3 style={{ fontSize: '1.05rem', marginBottom: '0.85rem' }}>In-App Notifications</h3>
-                {notificationsList.map((n) => (
-                  <div
-                    key={n.id}
-                    className="surface-card"
-                    style={{
-                      marginBottom: '0.75rem',
-                      borderLeft: n.is_read ? '1px solid var(--border-neutral)' : '3px solid var(--color-primary)',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <strong style={{ fontSize: '0.92rem' }}>{n.title}</strong>
-                      <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {String(n.created_at).slice(0, 16)}
-                      </span>
+            {notificationsList.length === 0 && devEmailsList.length === 0 ? (
+              <EmptyState
+                icon={Bell}
+                title="All Caught Up!"
+                description="You have no notifications or transactional email logs. Important account events, payout updates, and new courses will appear here."
+                badge="Notification Stream"
+              />
+            ) : (
+              <div className="grid-2">
+                <div>
+                  <h3 style={{ fontSize: '1.05rem', marginBottom: '0.85rem' }}>In-App Notifications</h3>
+                  {notificationsList.length === 0 ? (
+                    <div className="surface-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No unread alerts
                     </div>
-                    <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>{n.message}</p>
-                  </div>
-                ))}
-              </div>
+                  ) : (
+                    notificationsList.map((n) => (
+                      <div
+                        key={n.id}
+                        className="surface-card"
+                        style={{
+                          marginBottom: '0.75rem',
+                          borderLeft: n.is_read ? '1px solid var(--border-neutral)' : '3px solid var(--color-primary)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                          <strong style={{ fontSize: '0.92rem' }}>{n.title}</strong>
+                          <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {String(n.created_at).slice(0, 16)}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)' }}>{n.message}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
 
-              <div>
-                <h3 style={{ fontSize: '1.05rem', marginBottom: '0.85rem' }}>Delivered Transactional Emails ({user.email})</h3>
-                {devEmailsList.map((em) => (
-                  <div key={em.id} className="surface-card" style={{ marginBottom: '0.75rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                      <span className="status-badge badge-success">{em.template_key}</span>
-                      <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {String(em.sent_at).slice(0, 16)}
-                      </span>
+                <div>
+                  <h3 style={{ fontSize: '1.05rem', marginBottom: '0.85rem' }}>Delivered Transactional Emails ({user.email})</h3>
+                  {devEmailsList.length === 0 ? (
+                    <div className="surface-card" style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                      No recent dispatch logs
                     </div>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem', marginTop: '0.3rem' }}>{em.subject}</div>
-                    <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{em.body_preview}</p>
-                  </div>
-                ))}
+                  ) : (
+                    devEmailsList.map((em) => (
+                      <div key={em.id} className="surface-card" style={{ marginBottom: '0.75rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                          <span className="status-badge badge-success">{em.template_key}</span>
+                          <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            {String(em.sent_at).slice(0, 16)}
+                          </span>
+                        </div>
+                        <div style={{ fontWeight: 600, fontSize: '0.88rem', marginTop: '0.3rem' }}>{em.subject}</div>
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>{em.body_preview}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
+              </>
+            )}
+          </PageTransition>
+        </ComponentErrorBoundary>
       </main>
     </div>
   );

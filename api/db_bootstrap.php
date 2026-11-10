@@ -1,8 +1,11 @@
 <?php
 /**
  * LearnUp India (learnupindia.com) — Hostinger MySQL Connection & Auto-Initializer
- * Database: u591469534_educ
- * Username: u591469534_educt
+ * Optimized for Hostinger Business Plan:
+ * - ATTR_PERSISTENT = false (prevents connection pooling starvation on PHP-FPM)
+ * - Session wait_timeout = 60 & interactive_timeout = 60 (releases idle sockets immediately)
+ * - ATTR_TIMEOUT = 4 (prevents hanging requests)
+ * - executeWithRetry() helper with auto-reconnect on dropped connections
  */
 
 @ini_set('display_errors', '0');
@@ -20,9 +23,9 @@ define('SMTP_USER', 'team@learnupindia.com');
 define('SMTP_PASS', 'Owner@team4');
 define('WEBSITE_NAME', 'learnupindia.com');
 
-function getLearnUpPdo(): ?PDO {
+function getLearnUpPdo(bool $forceNew = false): ?PDO {
     static $pdo = null;
-    if ($pdo !== null) {
+    if ($pdo !== null && !$forceNew) {
         return $pdo;
     }
 
@@ -35,21 +38,64 @@ function getLearnUpPdo(): ?PDO {
         ['host' => 'localhost', 'db' => 'u591469534_educt', 'user' => 'u591469534_educt', 'pass' => DB_PASS],
     ];
 
+    $options = [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_TIMEOUT => 4,
+        PDO::ATTR_PERSISTENT => false, // Crucial for Hostinger Business Plan to prevent "Too many connections"
+    ];
+    if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
+        $options[PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, SESSION wait_timeout = 60, SESSION interactive_timeout = 60";
+    }
+
     foreach ($candidates as $c) {
         try {
             $dsn = 'mysql:host=' . $c['host'] . ';port=' . DB_PORT . ';dbname=' . $c['db'] . ';charset=utf8mb4';
-            $pdo = new PDO($dsn, $c['user'], $c['pass'], [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_TIMEOUT => 3,
-            ]);
-            ensureMysqlSchemaAndSeed($pdo);
+            $inst = new PDO($dsn, $c['user'], $c['pass'], $options);
+            ensureMysqlSchemaAndSeed($inst);
+            $pdo = $inst;
             return $pdo;
         } catch (Throwable $e) {
-            $pdo = null;
+            // try next candidate
         }
     }
 
+    $pdo = null;
+    return null;
+}
+
+/**
+ * Execute query with automatic retry on transient connection drops (e.g. MySQL server has gone away)
+ */
+function executeWithRetry(?PDO &$pdo, string $sql, array $params = [], int $maxRetries = 3): ?PDOStatement {
+    $attempt = 0;
+    while ($attempt < $maxRetries) {
+        if (!$pdo) {
+            $pdo = getLearnUpPdo(true);
+        }
+        if (!$pdo) return null;
+
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            return $stmt;
+        } catch (PDOException $e) {
+            $attempt++;
+            $code = (int)($e->errorInfo[1] ?? 0);
+            $msg = $e->getMessage();
+            // Retry on MySQL server gone away (2006), connection lost (2013), deadlock/lock wait timeout (1205, 1213)
+            $isRetryable = in_array($code, [2006, 2013, 1205, 1213, 1040], true)
+                || stripos($msg, 'server has gone away') !== false
+                || stripos($msg, 'Lost connection') !== false;
+
+            if ($isRetryable && $attempt < $maxRetries) {
+                usleep($attempt * 200000); // 200ms, 400ms backoff
+                $pdo = getLearnUpPdo(true);
+            } else {
+                throw $e;
+            }
+        }
+    }
     return null;
 }
 
@@ -59,8 +105,8 @@ function ensureMysqlSchemaAndSeed(PDO $pdo): void {
         $hasBatches = $stmt && $stmt->fetchColumn();
         if ($hasBatches) {
             $cntUsers = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
-            $cntContent = (int)$pdo->query("SELECT COUNT(*) FROM `website_content`")->fetchColumn();
-            if ($cntUsers >= 9 && $cntContent >= 1) {
+            $cntCourses = (int)$pdo->query("SELECT COUNT(*) FROM `courses`")->fetchColumn();
+            if ($cntUsers >= 9 && $cntCourses >= 3) {
                 return;
             }
         }

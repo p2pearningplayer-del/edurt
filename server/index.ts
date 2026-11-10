@@ -3329,6 +3329,21 @@ app.post('/api/admin/backups/:id/verify', requireAdmin('backups.manage'), (req: 
   }
 });
 
+// Catch-all API 404 JSON responder
+app.use('/api', (req: Request, res: Response) => {
+  res.status(404).json({ error: `API endpoint ${req.method} ${req.originalUrl || req.path} not found`, data: [] });
+});
+
+// Catch-all API 500 JSON error responder
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('[LearnUp India API Error]:', err);
+  if (res.headersSent) return;
+  res.status(err?.status || 500).json({
+    error: err?.message || 'Internal server error occurred',
+    data: [],
+  });
+});
+
 // Serve static production frontend bundle (for Hostinger Node.js deployment)
 const distDir = path.resolve(process.cwd(), 'dist');
 if (fs.existsSync(distDir)) {

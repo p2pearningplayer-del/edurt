@@ -937,6 +937,63 @@ function seedInitialData(): void {
       ).lastInsertRowid
     );
 
+    const c4 = Number(
+      insertCourse.run(
+        'Full-Stack Web Mastery (React 19, Node.js & Cloud)',
+        'full-stack-web-mastery',
+        '/assets/media/course_growth.jpg',
+        'Build robust enterprise web applications with React 19, TypeScript, RESTful Node APIs, and cloud deployments.',
+        'Comprehensive hands-on curriculum taking you from modern JavaScript frameworks through enterprise backend architecture, database indexing, and automated cloud deployments.',
+        JSON.stringify([
+          'Master React 19 hooks, state management, and modern component lifecycle',
+          'Engineer scalable Node.js and Express RESTful API backends with authentication',
+          'Implement relational database schemas, migrations, and query indexing',
+          'Deploy resilient full-stack systems to cloud infrastructure with zero downtime',
+        ]),
+        'Prof. Arjun Sengupta',
+        'Beginner to Advanced',
+        4
+      ).lastInsertRowid
+    );
+
+    const c5 = Number(
+      insertCourse.run(
+        'Cybersecurity & Enterprise Cloud DevSecOps',
+        'cybersecurity-enterprise-devsecops',
+        '/assets/media/course_trading.jpg',
+        'Zero-trust network architecture, vulnerability management, cloud IAM, and automated CI/CD pipeline defense.',
+        'Hands-on security engineering covering modern threat defense, cloud infrastructure hardening, secret management, and compliance standards.',
+        JSON.stringify([
+          'Architect zero-trust security postures across public cloud environments',
+          'Implement automated static and dynamic security analysis in CI/CD pipelines',
+          'Master cryptographic access control, tokens, and OAuth2 security patterns',
+          'Conduct vulnerability assessments and security audit logging',
+        ]),
+        'Kabir Saxena, CISSP',
+        'Intermediate to Advanced',
+        5
+      ).lastInsertRowid
+    );
+
+    const c6 = Number(
+      insertCourse.run(
+        'Financial Modeling & Venture Capital Valuation',
+        'financial-modeling-venture-capital',
+        '/assets/media/course_affiliate.jpg',
+        'Three-statement financial modeling, DCF valuations, startup cap tables, and institutional investor pitch decks.',
+        'Learn the rigorous financial modeling techniques used by venture capitalists and investment bankers to value growth companies and negotiate funding rounds.',
+        JSON.stringify([
+          'Build dynamic 3-statement integrated financial forecast models',
+          'Execute DCF, comparable company, and precedent transaction valuations',
+          'Structure startup capitalization tables, dilution, and SAFEs',
+          'Design institutional-grade investment memorandums and unit economics models',
+        ]),
+        'Meera Krishnan, CFA',
+        'Executive',
+        6
+      ).lastInsertRowid
+    );
+
     const seedCourseContent = (courseId: number, prefix: string) => {
       const m1 = Number(
         db.prepare('INSERT INTO course_modules (course_id, title, description, display_order) VALUES (?, ?, ?, 1)').run(
@@ -1020,6 +1077,9 @@ function seedInitialData(): void {
     const c1Content = seedCourseContent(c1, 'Affiliate Systems');
     seedCourseContent(c2, 'Quantitative Risk');
     seedCourseContent(c3, 'AI Scaling');
+    seedCourseContent(c4, 'Full-Stack Engineering');
+    seedCourseContent(c5, 'Enterprise DevSecOps');
+    seedCourseContent(c6, 'Venture Finance');
 
     // Seed Learning Packages
     const insertPkg = db.prepare(`
@@ -1076,8 +1136,8 @@ function seedInitialData(): void {
         '/assets/media/pkg_elite.jpg',
         10000,
         JSON.stringify([
-          'All 3 Flagship Courses Included (Lifetime Access)',
-          'AI-Driven Content Automation & Digital Product Scaling',
+          'All 6 Flagship Courses Included (Lifetime Access)',
+          'Full-Stack + Quantitative Trading + AI Automation + DevSecOps + Venture Finance',
           'Executive Separate Certificates for Every Completed Course',
           'VIP Batch & Promotional Cohort Access',
           '70% Gross Commission (₹7,000 per Elite Referral)',
@@ -1089,11 +1149,17 @@ function seedInitialData(): void {
 
     const linkPkgCourse = db.prepare('INSERT INTO package_courses (package_id, course_id) VALUES (?, ?)');
     linkPkgCourse.run(pkgStarterId, c1);
+    linkPkgCourse.run(pkgStarterId, c4);
     linkPkgCourse.run(pkgProId, c1);
     linkPkgCourse.run(pkgProId, c2);
+    linkPkgCourse.run(pkgProId, c3);
+    linkPkgCourse.run(pkgProId, c4);
     linkPkgCourse.run(pkgEliteId, c1);
     linkPkgCourse.run(pkgEliteId, c2);
     linkPkgCourse.run(pkgEliteId, c3);
+    linkPkgCourse.run(pkgEliteId, c4);
+    linkPkgCourse.run(pkgEliteId, c5);
+    linkPkgCourse.run(pkgEliteId, c6);
 
     const now = new Date();
     const isoDaysAgo = (days: number) => {
@@ -1121,6 +1187,9 @@ function seedInitialData(): void {
     db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, completed_at, enrolled_at) VALUES (?, ?, ?, ?, 1, ?, ?)').run(aaravId, c1, pkgEliteId, ord1Id, isoDaysAgo(10), isoDaysAgo(18));
     db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 0, ?)').run(aaravId, c2, pkgEliteId, ord1Id, isoDaysAgo(18));
     db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 0, ?)').run(aaravId, c3, pkgEliteId, ord1Id, isoDaysAgo(18));
+    db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 0, ?)').run(aaravId, c4, pkgEliteId, ord1Id, isoDaysAgo(18));
+    db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 0, ?)').run(aaravId, c5, pkgEliteId, ord1Id, isoDaysAgo(18));
+    db.prepare('INSERT INTO user_course_enrollments (user_id, course_id, package_id, order_id, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 0, ?)').run(aaravId, c6, pkgEliteId, ord1Id, isoDaysAgo(18));
 
     const fullSegments = JSON.stringify([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     db.prepare(`

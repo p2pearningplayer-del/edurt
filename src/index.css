@@ -896,3 +896,62 @@ textarea {
   }
 }
 
+/* ========================================================================= */
+/* PREMIUM GLASSMORPHISM & SKELETON SHIMMER ANIMATIONS                       */
+/* ========================================================================= */
+
+@keyframes shimmerPulse {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-surface, #121816);
+  border: 1px solid var(--border-neutral, rgba(255, 255, 255, 0.08));
+}
+
+.skeleton-line,
+.skeleton-bar,
+.skeleton-media {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmerPulse 1.8s infinite ease-in-out;
+  border-radius: 4px;
+}
+
+.surface-card {
+  background: rgba(18, 24, 22, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.22s ease;
+}
+
+.surface-card:hover {
+  border-color: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 14px 36px -10px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.package-card {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
+}
+
+.package-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 20px 48px -12px rgba(16, 185, 129, 0.15), 0 0 0 1px rgba(16, 185, 129, 0.25);
+}
+
+
