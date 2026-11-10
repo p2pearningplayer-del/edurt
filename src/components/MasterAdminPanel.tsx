@@ -117,6 +117,8 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
   // Users
   const [usersList, setUsersList] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState<'all' | 'active' | 'inactive' | 'suspended'>('all');
+  const [userCounts, setUserCounts] = useState({ total: 0, active: 0, inactive: 0, suspended: 0 });
   const [manualUserName, setManualUserName] = useState('');
   const [manualUserEmail, setManualUserEmail] = useState('');
   const [manualUserMobile, setManualUserMobile] = useState('');
@@ -166,7 +168,7 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
 
   useEffect(() => {
     loadModule(activeMod);
-  }, [activeMod]);
+  }, [activeMod, userStatusFilter]);
 
   const loadModule = async (mod: AdminModule) => {
     setIsModLoading(true);
@@ -192,8 +194,11 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
           });
         }
       } else if (mod === 'users') {
-        const d = await fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}`).then((r) => r.json());
-        if (d && Array.isArray(d.users)) setUsersList(d.users);
+        const d = await fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}&status=${userStatusFilter}`).then((r) => r.json());
+        if (d && Array.isArray(d.users)) {
+          setUsersList(d.users);
+          if (d.counts) setUserCounts(d.counts);
+        }
       } else if (mod === 'finance') {
         const [w, a] = await Promise.all([
           fetch('/api/admin/wallet').then((r) => r.json()),
@@ -1133,9 +1138,113 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
         {/* ================================================================= */}
         {activeMod === 'users' && (
           <div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <span className="eyebrow-label">ACCOUNT PROVISIONING &amp; GOVERNANCE</span>
-              <h2>User Management</h2>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div>
+                <span className="eyebrow-label">ACCOUNT PROVISIONING &amp; GOVERNANCE</span>
+                <h2>User Management</h2>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ width: '240px' }}
+                  placeholder="Search name, email, code..."
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') loadModule('users');
+                  }}
+                />
+                <button className="btn btn-secondary btn-sm" onClick={() => loadModule('users')}>
+                  Search
+                </button>
+              </div>
+            </div>
+
+            {/* User Statistics KPI Cards */}
+            <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
+              <div
+                className="surface-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: userStatusFilter === 'all' ? 'var(--color-primary)' : undefined,
+                }}
+                onClick={() => setUserStatusFilter('all')}
+              >
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Total Registered Users
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#f8fafc', marginTop: '0.35rem' }}>
+                  {userCounts.total || usersList.length}
+                </div>
+              </div>
+
+              <div
+                className="surface-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: userStatusFilter === 'active' ? 'var(--color-primary)' : undefined,
+                }}
+                onClick={() => setUserStatusFilter('active')}
+              >
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Active Users (Paid)
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#10b981', marginTop: '0.35rem' }}>
+                  {userCounts.active}
+                </div>
+              </div>
+
+              <div
+                className="surface-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: userStatusFilter === 'inactive' ? '#fbbf24' : undefined,
+                }}
+                onClick={() => setUserStatusFilter('inactive')}
+              >
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Inactive Users (Pending Payment)
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fbbf24', marginTop: '0.35rem' }}>
+                  {userCounts.inactive}
+                </div>
+              </div>
+
+              <div
+                className="surface-card"
+                style={{
+                  cursor: 'pointer',
+                  borderColor: userStatusFilter === 'suspended' ? '#f87171' : undefined,
+                }}
+                onClick={() => setUserStatusFilter('suspended')}
+              >
+                <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
+                  Suspended Accounts
+                </div>
+                <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#f87171', marginTop: '0.35rem' }}>
+                  {userCounts.suspended}
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              {[
+                { id: 'all', label: `All Users (${userCounts.total || usersList.length})` },
+                { id: 'active', label: `Active Accounts (${userCounts.active})` },
+                { id: 'inactive', label: `Inactive (Pending Payment) (${userCounts.inactive})` },
+                { id: 'suspended', label: `Suspended (${userCounts.suspended})` },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  id={`admin-user-tab-${tab.id}`}
+                  className={`btn btn-sm ${userStatusFilter === tab.id ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setUserStatusFilter(tab.id as any)}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
 
             <div className="surface-card" style={{ marginBottom: '1.5rem' }}>
@@ -1209,7 +1318,7 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
               <EmptyState
                 icon={Users}
                 title="No Users Found"
-                description="No user records match the current filter or search term."
+                description={`No user records match status '${userStatusFilter}' or search criteria.`}
                 badge="User Management"
               />
             ) : (
@@ -1219,58 +1328,123 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
                     <tr>
                       <th>ID</th>
                       <th>User Name &amp; Contact</th>
+                      <th>Account Status</th>
+                      <th>Payment Status</th>
+                      <th>Selected Package</th>
+                      <th>Account Activation Date</th>
                       <th>Affiliate Code</th>
                       <th>Locked Sponsor</th>
                       <th>Available Commission</th>
-                      <th>KYC Status</th>
-                      <th>Account Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {usersList.map((u) => (
-                      <tr key={u.id}>
-                        <td className="mono">#{u.id}</td>
-                        <td>
-                          <div style={{ fontWeight: 600 }}>{u.full_name}</div>
-                          <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                            {u.email} · {u.mobile}
-                          </div>
-                        </td>
-                        <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
-                          {u.affiliate_code}
-                        </td>
-                        <td className="mono">{u.referred_by_code || 'COMPANY DIRECT'}</td>
-                        <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
-                          ₹{Number(u.available_commission_inr || 0).toLocaleString('en-IN')}
-                        </td>
-                        <td>
-                          <span className="status-badge badge-neutral">{u.kyc_status || 'not_submitted'}</span>
-                        </td>
-                        <td>
-                          <span className={`status-badge ${u.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
-                            {u.status}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="btn btn-secondary btn-sm"
-                            onClick={async () => {
-                              const nextStatus = u.status === 'active' ? 'suspended' : 'active';
-                              await fetch(`/api/admin/users/${u.id}`, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: nextStatus }),
-                              });
-                              notify('ok', `User #${u.id} status updated to ${nextStatus}`);
-                              loadModule('users');
-                            }}
-                          >
-                            {u.status === 'active' ? 'Suspend' : 'Activate'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {usersList.map((u) => {
+                      const isPaid = u.latest_payment_status === 'successful' || Number(u.paid_orders_count || 0) > 0;
+                      return (
+                        <tr key={u.id}>
+                          <td className="mono">#{u.id}</td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{u.full_name}</div>
+                            <div className="mono" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                              {u.email} · {u.mobile}
+                            </div>
+                          </td>
+                          <td>
+                            <span
+                              className={`status-badge ${
+                                u.status === 'active'
+                                  ? 'badge-success'
+                                  : u.status === 'inactive'
+                                  ? 'badge-warning'
+                                  : 'badge-danger'
+                              }`}
+                            >
+                              {u.status === 'inactive' ? 'Inactive (Pending)' : u.status.toUpperCase()}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`status-badge ${isPaid ? 'badge-success' : 'badge-warning'}`}>
+                              {isPaid ? 'Paid' : 'Pending Payment'}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                              {u.latest_package_name || 'Standard Learning Package'}
+                            </div>
+                            {u.latest_package_price && (
+                              <div className="mono" style={{ fontSize: '0.74rem', color: 'var(--color-primary)' }}>
+                                ₹{Number(u.latest_package_price).toLocaleString('en-IN')}
+                              </div>
+                            )}
+                          </td>
+                          <td className="mono" style={{ fontSize: '0.8rem' }}>
+                            {u.activated_at ? (
+                              <span style={{ color: '#10b981' }}>{String(u.activated_at).slice(0, 16)}</span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>Not Activated</span>
+                            )}
+                          </td>
+                          <td className="mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>
+                            {u.affiliate_code || 'Pending'}
+                          </td>
+                          <td className="mono">{u.referred_by_code || 'COMPANY DIRECT'}</td>
+                          <td className="mono" style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                            ₹{Number(u.available_commission_inr || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              {u.status === 'inactive' ? (
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={async () => {
+                                    await fetch(`/api/admin/users/${u.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'active' }),
+                                    });
+                                    notify('ok', `User #${u.id} activated! Dashboard unlocked and package enrolled.`);
+                                    loadModule('users');
+                                  }}
+                                >
+                                  Activate Account
+                                </button>
+                              ) : u.status === 'active' ? (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={async () => {
+                                    await fetch(`/api/admin/users/${u.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'suspended' }),
+                                    });
+                                    notify('ok', `User #${u.id} suspended.`);
+                                    loadModule('users');
+                                  }}
+                                >
+                                  Suspend
+                                </button>
+                              ) : (
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={async () => {
+                                    await fetch(`/api/admin/users/${u.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ status: 'active' }),
+                                    });
+                                    notify('ok', `User #${u.id} reactivated.`);
+                                    loadModule('users');
+                                  }}
+                                >
+                                  Reactivate
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

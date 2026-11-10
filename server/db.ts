@@ -97,6 +97,7 @@ export function initializeDatabase(): void {
       acquisition_source TEXT NOT NULL DEFAULT 'company',
       created_by_admin_id INTEGER,
       last_login_at TEXT,
+      activated_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
@@ -734,6 +735,19 @@ export function initializeDatabase(): void {
       restored_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  try {
+    db.prepare('ALTER TABLE users ADD COLUMN activated_at TEXT').run();
+  } catch {
+    // Column already exists
+  }
+
+  // Ensure active seed users have activated_at populated
+  try {
+    db.prepare("UPDATE users SET activated_at = created_at WHERE status = 'active' AND (activated_at IS NULL OR activated_at = '')").run();
+  } catch {
+    // Ignore if not present
+  }
 
   const existingRoles = db.prepare('SELECT COUNT(*) as cnt FROM roles').get() as { cnt: number };
   if (existingRoles.cnt > 0) {

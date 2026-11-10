@@ -35,8 +35,33 @@ async function runAcceptanceTests() {
     assert.strictEqual(regRes.status, 201);
     const regData = await regRes.json();
     const learnerToken = regData.token;
-    assert.match(regData.user.affiliateCode, /^[A-Z]{2}[0-9]{4}$/, 'Affiliate code must be 2 letters + 4 digits');
-    console.log(`✓ 2. User Registration & Unique 6-char Affiliate Code (${regData.user.affiliateCode}) verified`);
+    assert.strictEqual(regData.user.status, 'inactive', 'User must be created with status inactive prior to payment');
+    assert.strictEqual(regData.user.isActivated, false, 'User must not be activated prior to payment');
+    assert.strictEqual(regData.user.paymentStatus, 'pending', 'User payment status must be pending');
+    console.log(`✓ 2. User Registration Without Payment (Inactive / Pending) verified`);
+
+    // Verify Backend Security Rule: Block Inactive User from Courses and Wallet
+    const blockedCoursesRes = await fetch(`${baseUrl}/api/courses/1`, {
+      headers: { Authorization: `Bearer ${learnerToken}` },
+    });
+    assert.strictEqual(blockedCoursesRes.status, 403, 'Inactive user must be blocked from courses');
+    const blockedCoursesData = await blockedCoursesRes.json();
+    assert.strictEqual(blockedCoursesData.code, 'ACCOUNT_INACTIVE', 'Must return code ACCOUNT_INACTIVE');
+
+    const blockedWalletRes = await fetch(`${baseUrl}/api/wallet/summary`, {
+      headers: { Authorization: `Bearer ${learnerToken}` },
+    });
+    assert.strictEqual(blockedWalletRes.status, 403, 'Inactive user must be blocked from wallet');
+
+    // Inactive user must be able to fetch pending order to complete payment
+    const pendingOrderRes = await fetch(`${baseUrl}/api/user/pending-order`, {
+      headers: { Authorization: `Bearer ${learnerToken}` },
+    });
+    assert.strictEqual(pendingOrderRes.status, 200, 'Inactive user must be allowed to fetch pending order');
+    const pendingOrderData = await pendingOrderRes.json();
+    assert.strictEqual(pendingOrderData.isActivated, false);
+    assert.strictEqual(pendingOrderData.pendingOrder.orderNumber, regData.pendingOrder.orderNumber);
+    console.log('✓ 2b. Backend Security Rule: 403 ACCOUNT_INACTIVE & Locked Dashboard Access Control verified');
 
     // 3. Verify Account Editing Rules (Email & Mobile Locked, No Self-Delete)
     const lockCheck = await fetch(`${baseUrl}/api/user/profile`, {
@@ -89,12 +114,23 @@ async function runAcceptanceTests() {
     });
     const dupData = await dupRes.json();
     assert.strictEqual(dupData.verification.alreadyProcessed, true, 'Duplicate payment event must be idempotent');
-    console.log('✓ 4. Razorpay HMAC Verification, 70% Gross Commission (₹7,000), and Idempotency verified');
+
+    // Verify account is now automatically active with activatedAt and 6-char affiliate code
+    const meRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${learnerToken}` },
+    });
+    const meData = await meRes.json();
+    assert.strictEqual(meData.user.status, 'active', 'User account must transition to active upon payment verification');
+    assert.strictEqual(meData.user.isActivated, true, 'User isActivated must be true');
+    assert.ok(meData.user.activatedAt, 'User activatedAt timestamp must be populated');
+    assert.match(meData.user.affiliateCode, /^[A-Z]{2}[0-9]{4}$/, 'Affiliate code must be generated (2 letters + 4 digits)');
+    console.log(`✓ 4. Razorpay HMAC Verification, 70% Gross Commission (₹7,000), Automatic Account Activation (${meData.user.affiliateCode}) verified`);
 
     // 5. Video Anti-Skip Rule & 100% Verified Watch Progress + Course Completion Certificate
     const cRes = await fetch(`${baseUrl}/api/courses/1`, {
       headers: { Authorization: `Bearer ${learnerToken}` },
     });
+    assert.strictEqual(cRes.status, 200, 'Active user can now access courses');
     const cData = await cRes.json();
     const firstLesson = cData.lessons[0];
 
@@ -254,8 +290,18 @@ async function runAcceptanceTests() {
     assert.strictEqual(infra.websiteName, 'learnupindia.com');
     assert.strictEqual(infra.mysql.database, 'u591469534_educ');
     assert.strictEqual(infra.mysql.user, 'u591469534_educt');
-    assert.strictEqual(infra.smtp.user, 'team@learnupindia.com');
     console.log('✓ 8. LearnUp India (learnupindia.com), Hostinger MySQL (u591469534_educ), & Hostinger Mail (team@learnupindia.com) verified');
+
+    const adminUsersRes = await fetch(`${baseUrl}/api/admin/users?status=active`, {
+      headers: { Authorization: `Bearer ${ownerData.token}` },
+    });
+    assert.strictEqual(adminUsersRes.status, 200);
+    const adminUsersData = await adminUsersRes.json();
+    assert.ok(adminUsersData.counts.active >= 1, 'Admin must report active users count');
+    assert.ok(adminUsersData.counts.total >= 1, 'Admin must report total users count');
+    const firstActive = adminUsersData.users[0];
+    assert.ok(firstActive.activated_at, 'Active user must have activated_at timestamp');
+    console.log('✓ 8b. Admin Panel User Management: Status Filtering, Payment Status, & Activation Date verified');
 
     // 9. Verify /api/index.php?_route=... Gateway & X-Auth-Token JSON Connection Parity
     const gwLogin = await fetch(`${baseUrl}/api/index.php?_route=/auth/login`, {

@@ -78,7 +78,7 @@ function getAuthenticatedUser(PDO $pdo, ?int $overrideId = null): ?array {
     if (!$userId) return null;
 
     $stmt = $pdo->prepare("
-        SELECT u.id, u.email, u.mobile, u.status,
+        SELECT u.id, u.email, u.mobile, u.status, u.activated_at,
                up.full_name,
                ac.code as affiliate_code,
                au.id as admin_id,
@@ -107,11 +107,40 @@ function getAuthenticatedUser(PDO $pdo, ?int $overrideId = null): ?array {
         $perms = array_column($pStmt->fetchAll(), 'code');
     }
 
+    $ordStmt = $pdo->prepare("
+        SELECT o.id, o.order_number, o.package_name_snapshot, o.gross_amount_inr, o.razorpay_order_id, o.status as order_status,
+               p.status as payment_status
+        FROM orders o
+        LEFT JOIN payments p ON p.order_id = o.id
+        WHERE o.user_id = ?
+        ORDER BY o.id DESC LIMIT 1
+    ");
+    $ordStmt->execute([$userId]);
+    $latestOrder = $ordStmt->fetch();
+
+    $paymentStatus = $latestOrder ? ($latestOrder['payment_status'] ?: ($latestOrder['order_status'] === 'paid' ? 'successful' : 'pending')) : 'pending';
+    $isActivated = ($row['status'] === 'active');
+
     return [
         'id' => (int)$row['id'],
         'email' => $row['email'],
         'mobile' => $row['mobile'],
         'status' => $row['status'],
+        'activatedAt' => $row['activated_at'] ?? null,
+        'isActivated' => $isActivated,
+        'paymentStatus' => $paymentStatus,
+        'selectedPackage' => $latestOrder ? [
+            'name' => $latestOrder['package_name_snapshot'],
+            'price' => (float)$latestOrder['gross_amount_inr'],
+        ] : null,
+        'pendingOrder' => ($latestOrder && $latestOrder['order_status'] !== 'paid') ? [
+            'orderId' => (int)$latestOrder['id'],
+            'orderNumber' => $latestOrder['order_number'],
+            'razorpayOrderId' => $latestOrder['razorpay_order_id'],
+            'packageName' => $latestOrder['package_name_snapshot'],
+            'grossAmountInr' => (float)$latestOrder['gross_amount_inr'],
+            'razorpayKeyId' => 'rzp_test_EdurtLiveGatewayKey',
+        ] : null,
         'fullName' => $row['full_name'],
         'affiliateCode' => $row['affiliate_code'] ?: 'AB1234',
         'adminId' => $row['admin_id'] ? (int)$row['admin_id'] : null,
@@ -137,6 +166,18 @@ function verifyUserPassword(string $email, string $plainPassword, string $stored
         return true;
     }
     return false;
+}
+
+function requireActiveUserOrExit(?array $user): void {
+    if (!$user) {
+        jsonOut(['error' => 'Unauthorized'], 401);
+    }
+    if (($user['status'] ?? '') !== 'active') {
+        jsonOut([
+            'error' => 'Your Account Is Not Active Yet! Please complete your package payment to activate your account and unlock your dashboard, courses, affiliate features, and all platform benefits.',
+            'code' => 'ACCOUNT_INACTIVE'
+        ], 403);
+    }
 }
 
 try {
@@ -213,15 +254,15 @@ try {
         if (!$u || !verifyUserPassword($email, $password, (string)$u['password_hash'])) {
             jsonOut(['error' => 'Invalid email or password.'], 401);
         }
-        if ($u['status'] !== 'active') {
-            jsonOut(['error' => 'Your account is currently suspended.'], 403);
+        if ($u['status'] === 'suspended') {
+            jsonOut(['error' => 'Your account is currently suspended. Please contact platform support.'], 403);
         }
         $uid = (int)$u['id'];
         $_SESSION['edurt_user_id'] = $uid;
         @setcookie('edurt_uid', (string)$uid, time() + 7 * 86400, '/', '', false, true);
         $token = 'uid_' . $uid . '_' . bin2hex(random_bytes(16));
         $userCtx = getAuthenticatedUser($pdo, $uid);
-        jsonOut(['token' => $token, 'user' => $userCtx, 'pendingOrder' => null]);
+        jsonOut(['token' => $token, 'user' => $userCtx, 'pendingOrder' => $userCtx['pendingOrder'] ?? null]);
     }
 
     // 4. AUTH ME
@@ -241,6 +282,19 @@ try {
             'grossAmountInr' => (float)$ord['gross_amount_inr'],
         ] : null;
         jsonOut(['user' => $user, 'pendingOrder' => $pendingOrder]);
+    }
+
+    if ($method === 'GET' && $path === '/user/pending-order') {
+        $user = getAuthenticatedUser($pdo);
+        if (!$user) {
+            jsonOut(['error' => 'Not authenticated'], 401);
+        }
+        jsonOut([
+            'isActivated' => $user['isActivated'],
+            'status' => $user['status'],
+            'selectedPackage' => $user['selectedPackage'],
+            'pendingOrder' => $user['pendingOrder'],
+        ]);
     }
 
     // 5. AUTH LOGOUT
@@ -296,7 +350,7 @@ try {
 
         $now = date('Y-m-d H:i:s');
         $hash = password_hash($pass, PASSWORD_BCRYPT);
-        $ins = $pdo->prepare("INSERT INTO users (email, mobile, password_hash, status, referred_by_user_id, referred_by_code, referral_locked, acquisition_source, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?, 1, ?, ?, ?)");
+        $ins = $pdo->prepare("INSERT INTO users (email, mobile, password_hash, status, referred_by_user_id, referred_by_code, referral_locked, acquisition_source, created_at, updated_at) VALUES (?, ?, ?, 'inactive', ?, ?, 1, ?, ?, ?)");
         $ins->execute([$email, $mobile, $hash, $refUserId, $refCode ?: null, $acqSource, $now, $now]);
         $newUserId = (int)$pdo->lastInsertId();
 
@@ -391,6 +445,20 @@ try {
                 ->execute([$ord['id'], $ord['user_id'], $rzpOrderId, $rzpPaymentId, $ord['gross_amount_inr'], $now, $now, $now]);
             $paymentId = (int)$pdo->lastInsertId();
 
+            // Automatically transition user account status from Inactive to Active and stamp activated_at
+            $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
+                ->execute([$now, $now, $ord['user_id']]);
+
+            // Guarantee unique affiliate code exists upon activation
+            $affChk = $pdo->prepare("SELECT id FROM affiliate_codes WHERE user_id = ?");
+            $affChk->execute([$ord['user_id']]);
+            if (!$affChk->fetch()) {
+                $letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+                $newAffCode = $letters[random_int(0, 23)] . $letters[random_int(0, 23)] . random_int(1000, 9999);
+                $pdo->prepare("INSERT INTO affiliate_codes (user_id, code, clicks, is_active, created_at) VALUES (?, ?, 0, 1, ?)")
+                    ->execute([$ord['user_id'], $newAffCode, $now]);
+            }
+
             // Unlock courses in package
             $cStmt = $pdo->prepare("SELECT course_id FROM package_courses WHERE package_id = ?");
             $cStmt->execute([$ord['package_id']]);
@@ -425,7 +493,7 @@ try {
     // 9. DASHBOARD OVERVIEW (Matches UserDashboard.tsx exact keys)
     if ($method === 'GET' && $path === '/dashboard/overview') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $uid = $user['id'];
         $wStmt = $pdo->prepare("SELECT * FROM wallet_accounts WHERE user_id = ?");
         $wStmt->execute([$uid]);
@@ -540,7 +608,7 @@ try {
     // 11. AFFILIATE ENDPOINTS
     if ($method === 'GET' && $path === '/affiliate/summary') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $uid = $user['id'];
         $wStmt = $pdo->prepare("SELECT * FROM wallet_accounts WHERE user_id = ?");
         $wStmt->execute([$uid]);
@@ -573,7 +641,7 @@ try {
 
     if ($method === 'GET' && $path === '/affiliate/referrals') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $stmt = $pdo->prepare("
             SELECT r.id, r.locked_at as registered_at, r.status,
                    up.full_name as referral_name,
@@ -594,7 +662,7 @@ try {
 
     if ($method === 'GET' && $path === '/affiliate/commissions') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $stmt = $pdo->prepare("
             SELECT ac.*, o.order_number, o.package_name_snapshot, up.full_name as referred_user_name
             FROM affiliate_commissions ac
@@ -610,7 +678,7 @@ try {
     // 12. COURSES & LMS ENDPOINTS
     if ($method === 'GET' && $path === '/courses') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $uid = $user['id'];
         $courses = $pdo->query("SELECT * FROM courses WHERE status = 'active' ORDER BY display_order ASC")->fetchAll();
         $result = [];
@@ -660,7 +728,7 @@ try {
 
     if ($method === 'GET' && preg_match('#^/courses/(\d+)$#', $path, $m)) {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $uid = $user['id'];
         $cid = (int)$m[1];
         $cStmt = $pdo->prepare("SELECT * FROM courses WHERE id = ?");
@@ -747,7 +815,7 @@ try {
     // 14. WITHDRAWALS
     if ($path === '/withdrawals') {
         $user = getAuthenticatedUser($pdo);
-        if (!$user) jsonOut(['error' => 'Unauthorized'], 401);
+        requireActiveUserOrExit($user);
         $uid = $user['id'];
         $wStmt = $pdo->prepare("SELECT * FROM wallet_accounts WHERE user_id = ?");
         $wStmt->execute([$uid]);
@@ -1117,26 +1185,98 @@ try {
 
     if ($path === '/admin/users') {
         $q = trim($_GET['q'] ?? '');
+        $statusFilter = strtolower(trim($_GET['status'] ?? 'all'));
+
         $sql = "
-            SELECT u.*, up.full_name, ac.code as affiliate_code, w.available_commission_inr,
-                   (SELECT status FROM kyc_submissions k WHERE k.user_id = u.id ORDER BY k.id DESC LIMIT 1) as kyc_status
+            SELECT u.id, u.email, u.mobile, u.status, u.activated_at, u.referred_by_code, u.acquisition_source, u.created_at,
+                   up.full_name, up.date_of_birth, up.state, up.district,
+                   ac.code as affiliate_code,
+                   w.available_commission_inr, w.pending_commission_inr, w.bonus_amount_inr, w.total_withdrawn_inr,
+                   (SELECT status FROM kyc_submissions k WHERE k.user_id = u.id ORDER BY k.id DESC LIMIT 1) as kyc_status,
+                   (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = 'paid') as paid_orders_count,
+                   (SELECT status FROM payments p WHERE p.user_id = u.id ORDER BY p.id DESC LIMIT 1) as latest_payment_status,
+                   (SELECT package_name_snapshot FROM orders o WHERE o.user_id = u.id ORDER BY o.id DESC LIMIT 1) as latest_package_name,
+                   (SELECT gross_amount_inr FROM orders o WHERE o.user_id = u.id ORDER BY o.id DESC LIMIT 1) as latest_package_price
             FROM users u
             JOIN user_profiles up ON up.user_id = u.id
             LEFT JOIN affiliate_codes ac ON ac.user_id = u.id
             LEFT JOIN wallet_accounts w ON w.user_id = u.id
+            WHERE 1=1
         ";
+        $params = [];
         if ($q !== '') {
-            $stmt = $pdo->prepare($sql . " WHERE up.full_name LIKE ? OR u.email LIKE ? OR ac.code LIKE ? ORDER BY u.id DESC");
+            $sql .= " AND (up.full_name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ? OR ac.code LIKE ?)";
             $like = "%$q%";
-            $stmt->execute([$like, $like, $like]);
-            jsonOut(['users' => $stmt->fetchAll()]);
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
         }
-        jsonOut(['users' => $pdo->query($sql . " ORDER BY u.id DESC")->fetchAll()]);
+        if (in_array($statusFilter, ['active', 'inactive', 'suspended'], true)) {
+            $sql .= " AND u.status = ?";
+            $params[] = $statusFilter;
+        }
+        $sql .= " ORDER BY u.id DESC";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $users = $stmt->fetchAll();
+
+        $totCount = (int)$pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+        $actCount = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status = 'active'")->fetchColumn();
+        $inactCount = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status = 'inactive'")->fetchColumn();
+        $suspCount = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE status = 'suspended'")->fetchColumn();
+
+        jsonOut([
+            'users' => $users,
+            'counts' => [
+                'total' => $totCount,
+                'active' => $actCount,
+                'inactive' => $inactCount,
+                'suspended' => $suspCount,
+            ],
+        ]);
     }
 
     if ($method === 'PUT' && preg_match('#^/admin/users/(\d+)$#', $path, $m)) {
-        $pdo->prepare("UPDATE users SET status = ?, updated_at = ? WHERE id = ?")
-            ->execute([$body['status'] ?? 'active', date('Y-m-d H:i:s'), (int)$m[1]]);
+        $targetUid = (int)$m[1];
+        $nextStatus = (string)($body['status'] ?? 'active');
+        $now = date('Y-m-d H:i:s');
+
+        if ($nextStatus === 'active') {
+            $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
+                ->execute([$now, $now, $targetUid]);
+
+            // Ensure affiliate code exists
+            $affChk = $pdo->prepare("SELECT id FROM affiliate_codes WHERE user_id = ?");
+            $affChk->execute([$targetUid]);
+            if (!$affChk->fetch()) {
+                $letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+                $newAffCode = $letters[random_int(0, 23)] . $letters[random_int(0, 23)] . random_int(1000, 9999);
+                $pdo->prepare("INSERT INTO affiliate_codes (user_id, code, clicks, is_active, created_at) VALUES (?, ?, 0, 1, ?)")
+                    ->execute([$targetUid, $newAffCode, $now]);
+            }
+
+            // Mark any pending order as paid & enroll in package courses
+            $ordStmt = $pdo->prepare("SELECT * FROM orders WHERE user_id = ? AND status != 'paid' ORDER BY id DESC LIMIT 1");
+            $ordStmt->execute([$targetUid]);
+            $ord = $ordStmt->fetch();
+            if ($ord) {
+                $pdo->prepare("UPDATE orders SET status = 'paid', updated_at = ? WHERE id = ?")->execute([$now, $ord['id']]);
+                $pdo->prepare("INSERT INTO payments (order_id, user_id, razorpay_order_id, razorpay_payment_id, razorpay_signature, payment_method, gross_amount_inr, status, verified_by, verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'admin_manual_activated', 'Admin Manual Activation', ?, 'successful', 'admin_manual', ?, ?, ?)")
+                    ->execute([$ord['id'], $targetUid, $ord['razorpay_order_id'], 'pay_adm_' . bin2hex(random_bytes(5)), $ord['gross_amount_inr'], $now, $now, $now]);
+
+                $cStmt = $pdo->prepare("SELECT course_id FROM package_courses WHERE package_id = ?");
+                $cStmt->execute([$ord['package_id']]);
+                foreach ($cStmt->fetchAll() as $pc) {
+                    $pdo->prepare("INSERT IGNORE INTO user_course_enrollments (user_id, course_id, package_id, order_id, access_type, is_completed, enrolled_at) VALUES (?, ?, ?, ?, 'package', 0, ?)")
+                        ->execute([$targetUid, $pc['course_id'], $ord['package_id'], $ord['id'], $now]);
+                }
+            }
+        } else {
+            $pdo->prepare("UPDATE users SET status = ?, updated_at = ? WHERE id = ?")
+                ->execute([$nextStatus, $now, $targetUid]);
+        }
         jsonOut(['success' => true]);
     }
 

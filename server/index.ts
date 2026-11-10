@@ -67,7 +67,16 @@ export interface AuthenticatedUser {
   id: number;
   email: string;
   mobile: string;
-  status: string;
+  status: string; // 'active' | 'inactive' | 'suspended'
+  activatedAt?: string | null;
+  isActivated?: boolean;
+  paymentStatus?: string;
+  selectedPackage?: {
+    id: number;
+    name: string;
+    priceInr: number;
+  } | null;
+  pendingOrder?: any;
   fullName: string;
   affiliateCode: string;
   adminId?: number;
@@ -101,7 +110,7 @@ function getTokenFromRequest(req: Request): string | null {
 
 function loadUserContext(userId: number): AuthenticatedUser | null {
   const row = db.prepare(`
-    SELECT u.id, u.email, u.mobile, u.status,
+    SELECT u.id, u.email, u.mobile, u.status, u.activated_at,
            up.full_name,
            ac.code as affiliate_code,
            au.id as admin_id,
@@ -120,6 +129,7 @@ function loadUserContext(userId: number): AuthenticatedUser | null {
         email: string;
         mobile: string;
         status: string;
+        activated_at: string | null;
         full_name: string;
         affiliate_code: string;
         admin_id: number | null;
@@ -131,6 +141,28 @@ function loadUserContext(userId: number): AuthenticatedUser | null {
 
   if (!row) return null;
 
+  // Retrieve user's latest package order and payment status
+  const latestOrder = db.prepare(`
+    SELECT o.id, o.order_number, o.package_id, o.package_name_snapshot, o.gross_amount_inr, o.razorpay_order_id, o.status as order_status,
+           p.status as payment_status
+    FROM orders o
+    LEFT JOIN payments p ON p.order_id = o.id
+    WHERE o.user_id = ?
+    ORDER BY o.id DESC
+    LIMIT 1
+  `).get(userId) as
+    | {
+        id: number;
+        order_number: string;
+        package_id: number;
+        package_name_snapshot: string;
+        gross_amount_inr: number;
+        razorpay_order_id: string;
+        order_status: string;
+        payment_status: string | null;
+      }
+    | undefined;
+
   let permissions: string[] = [];
   if (row.role_id) {
     const permRows = db.prepare(`
@@ -141,11 +173,42 @@ function loadUserContext(userId: number): AuthenticatedUser | null {
     permissions = permRows.map((p) => p.code);
   }
 
+  const isActivated = row.status === 'active';
+  const paymentStatus = (latestOrder?.order_status === 'paid' || isActivated)
+    ? 'successful'
+    : latestOrder?.payment_status === 'failed'
+    ? 'failed'
+    : 'pending';
+
   return {
     id: row.id,
     email: row.email,
     mobile: row.mobile,
     status: row.status,
+    activatedAt: row.activated_at || null,
+    isActivated,
+    paymentStatus,
+    selectedPackage: latestOrder
+      ? {
+          id: latestOrder.package_id,
+          name: latestOrder.package_name_snapshot,
+          priceInr: latestOrder.gross_amount_inr,
+        }
+      : null,
+    pendingOrder: latestOrder
+      ? {
+          id: latestOrder.id,
+          orderNumber: latestOrder.order_number,
+          razorpayOrderId: latestOrder.razorpay_order_id,
+          packageId: latestOrder.package_id,
+          packageName: latestOrder.package_name_snapshot,
+          grossAmountInr: latestOrder.gross_amount_inr,
+          currency: 'INR',
+          razorpayKeyId: RAZORPAY_KEY_ID,
+          status: latestOrder.order_status,
+          paymentStatus,
+        }
+      : null,
     fullName: row.full_name,
     affiliateCode: row.affiliate_code || '',
     adminId: row.admin_id || undefined,
@@ -168,7 +231,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
       res.status(401).json({ error: 'Account not found.' });
       return;
     }
-    if (user.status !== 'active') {
+    if (user.status === 'suspended') {
       res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
       return;
     }
@@ -177,6 +240,24 @@ function requireAuth(req: Request, res: Response, next: NextFunction): void {
   } catch {
     res.status(401).json({ error: 'Invalid or expired session token.' });
   }
+}
+
+// PRD Extra Feature 01: Blocks inactive users from accessing protected dashboard features
+function requireActiveUser(req: Request, res: Response, next: NextFunction): void {
+  requireAuth(req, res, () => {
+    if (req.user!.status !== 'active') {
+      res.status(403).json({
+        error: 'Your Account Is Not Active Yet! Please complete your package payment to activate your account and unlock your dashboard, courses, affiliate features, and all platform benefits.',
+        code: 'ACCOUNT_INACTIVE',
+        accountStatus: req.user!.status,
+        paymentStatus: req.user!.paymentStatus || 'pending',
+        selectedPackage: req.user!.selectedPackage || null,
+        pendingOrder: req.user!.pendingOrder || null,
+      });
+      return;
+    }
+    next();
+  });
 }
 
 function requireAdmin(requiredPermission?: string) {
@@ -434,7 +515,7 @@ app.post('/api/auth/register', authLimiter, (req: Request, res: Response) => {
         INSERT INTO users (
           email, mobile, password_hash, status,
           referred_by_user_id, referred_by_code, referral_locked, acquisition_source, last_login_at
-        ) VALUES (?, ?, ?, 'active', ?, ?, 1, ?, datetime('now'))
+        ) VALUES (?, ?, ?, 'inactive', ?, ?, 1, ?, datetime('now'))
       `).run(normalizedEmail, normalizedMobile, passwordHash, sponsorUserId, lockedReferralCode, acquisitionSource);
 
       const newUserId = Number(uRes.lastInsertRowid);
@@ -546,7 +627,7 @@ app.post('/api/auth/login', authLimiter, (req: Request, res: Response) => {
     return;
   }
 
-  if (userRow.status !== 'active') {
+  if (userRow.status === 'suspended') {
     res.status(403).json({ error: 'Your account is currently suspended. Please contact Support.' });
     return;
   }
@@ -565,7 +646,7 @@ app.post('/api/auth/login', authLimiter, (req: Request, res: Response) => {
   res.cookie('edurt_token', token, { httpOnly: true, sameSite: 'lax', maxAge: 7 * 86400 * 1000 });
 
   const userContext = loadUserContext(userRow.id);
-  res.json({ token, user: userContext });
+  res.json({ token, user: userContext, pendingOrder: userContext?.pendingOrder });
 });
 
 app.post('/api/auth/logout', (req: Request, res: Response) => {
@@ -973,11 +1054,22 @@ app.post('/api/webhooks/razorpay', (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/user/pending-order', requireAuth, (req: Request, res: Response) => {
+  const user = req.user!;
+  res.json({
+    accountStatus: user.status,
+    isActivated: user.status === 'active',
+    paymentStatus: user.paymentStatus || 'pending',
+    selectedPackage: user.selectedPackage || null,
+    pendingOrder: user.pendingOrder || null,
+  });
+});
+
 // =============================================================================
 // 5. USER DASHBOARD OVERVIEW & AFFILIATE SYSTEM (PRD Sections 5 & 6)
 // =============================================================================
 
-app.get('/api/dashboard/overview', requireAuth, (req: Request, res: Response) => {
+app.get('/api/dashboard/overview', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const range = String(req.query.range || 'daily');
   const startDate = req.query.startDate ? String(req.query.startDate) : null;
@@ -1127,7 +1219,7 @@ app.get('/api/dashboard/overview', requireAuth, (req: Request, res: Response) =>
   });
 });
 
-app.get('/api/affiliate/summary', requireAuth, (req: Request, res: Response) => {
+app.get('/api/affiliate/summary', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const codeRow = db.prepare('SELECT code, clicks, created_at FROM affiliate_codes WHERE user_id = ?').get(userId) as {
     code: string;
@@ -1164,7 +1256,7 @@ app.get('/api/affiliate/summary', requireAuth, (req: Request, res: Response) => 
   });
 });
 
-app.get('/api/affiliate/referrals', requireAuth, (req: Request, res: Response) => {
+app.get('/api/affiliate/referrals', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const rows = db.prepare(`
     SELECT r.id, r.referred_user_id, r.locked_at as registration_date, r.status as referral_status,
@@ -1208,7 +1300,7 @@ app.get('/api/affiliate/referrals', requireAuth, (req: Request, res: Response) =
   res.json({ referrals: sanitized });
 });
 
-app.get('/api/affiliate/commissions', requireAuth, (req: Request, res: Response) => {
+app.get('/api/affiliate/commissions', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const commissions = db.prepare(`
     SELECT ac.*, up.full_name as referred_user_name, p.name as package_name
@@ -1226,19 +1318,19 @@ app.get('/api/affiliate/commissions', requireAuth, (req: Request, res: Response)
 // 6. WALLET & WITHDRAWAL SYSTEM (PRD Section 10 & 18.4)
 // =============================================================================
 
-app.get('/api/wallet/summary', requireAuth, (req: Request, res: Response) => {
+app.get('/api/wallet/summary', requireActiveUser, (req: Request, res: Response) => {
   const wallet = db.prepare('SELECT * FROM wallet_accounts WHERE user_id = ?').get(req.user!.id);
   res.json({ wallet });
 });
 
-app.get('/api/wallet/transactions', requireAuth, (req: Request, res: Response) => {
+app.get('/api/wallet/transactions', requireActiveUser, (req: Request, res: Response) => {
   const transactions = db.prepare(`
     SELECT * FROM wallet_transactions WHERE user_id = ? ORDER BY id DESC
   `).all(req.user!.id);
   res.json({ transactions });
 });
 
-app.get('/api/withdrawals', requireAuth, (req: Request, res: Response) => {
+app.get('/api/withdrawals', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const wallet = db.prepare('SELECT * FROM wallet_accounts WHERE user_id = ?').get(userId);
   const kyc = db.prepare('SELECT * FROM kyc_submissions WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId) as
@@ -1292,7 +1384,7 @@ app.get('/api/withdrawals', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/withdrawals', requireAuth, (req: Request, res: Response) => {
+app.post('/api/withdrawals', requireActiveUser, (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { amountInr, payoutMethod, accountHolderName, bankName, accountNumber, ifscCode, upiId } = req.body;
@@ -1426,7 +1518,7 @@ app.post('/api/withdrawals', requireAuth, (req: Request, res: Response) => {
 // 7. COURSES, STREAMING VIDEO, NOTES, QUIZZES, ASSIGNMENTS, CERTIFICATES (PRD Section 8)
 // =============================================================================
 
-app.get('/api/courses', requireAuth, (req: Request, res: Response) => {
+app.get('/api/courses', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const enrolled = db.prepare(`
     SELECT c.*,
@@ -1454,7 +1546,7 @@ app.get('/api/courses', requireAuth, (req: Request, res: Response) => {
   res.json({ courses: enriched });
 });
 
-app.get('/api/courses/:id', requireAuth, (req: Request, res: Response) => {
+app.get('/api/courses/:id', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const courseId = Number(req.params.id);
 
@@ -1611,7 +1703,7 @@ app.get('/api/stream/:assetKey', (req: Request, res: Response) => {
 });
 
 // Server-side Verified Video Progress Tracking (PRD Section 8.4)
-app.post('/api/lessons/:id/progress', requireAuth, (req: Request, res: Response) => {
+app.post('/api/lessons/:id/progress', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const lessonId = Number(req.params.id);
   const { watchedSeconds, currentPosition } = req.body;
@@ -1694,7 +1786,7 @@ app.post('/api/lessons/:id/progress', requireAuth, (req: Request, res: Response)
 });
 
 // Notes CRUD (PRD Section 8.6)
-app.post('/api/courses/:id/notes', requireAuth, (req: Request, res: Response) => {
+app.post('/api/courses/:id/notes', requireActiveUser, (req: Request, res: Response) => {
   const courseId = Number(req.params.id);
   const { lessonId, title, content } = req.body;
   if (!title || !content) {
@@ -1709,7 +1801,7 @@ app.post('/api/courses/:id/notes', requireAuth, (req: Request, res: Response) =>
   res.status(201).json({ note });
 });
 
-app.put('/api/notes/:id', requireAuth, (req: Request, res: Response) => {
+app.put('/api/notes/:id', requireActiveUser, (req: Request, res: Response) => {
   const noteId = Number(req.params.id);
   const { title, content } = req.body;
   const existing = db.prepare('SELECT * FROM user_notes WHERE id = ? AND user_id = ?').get(noteId, req.user!.id);
@@ -1724,14 +1816,14 @@ app.put('/api/notes/:id', requireAuth, (req: Request, res: Response) => {
   res.json({ note: updated });
 });
 
-app.delete('/api/notes/:id', requireAuth, (req: Request, res: Response) => {
+app.delete('/api/notes/:id', requireActiveUser, (req: Request, res: Response) => {
   const noteId = Number(req.params.id);
   db.prepare('DELETE FROM user_notes WHERE id = ? AND user_id = ?').run(noteId, req.user!.id);
   res.json({ success: true });
 });
 
 // Quiz Submission & Automatic Server-Side Grading (PRD Section 8.7)
-app.post('/api/quizzes/:id/submit', requireAuth, (req: Request, res: Response) => {
+app.post('/api/quizzes/:id/submit', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const quizId = Number(req.params.id);
   const { answers } = req.body; // { [questionId]: number | number[] }
@@ -1799,7 +1891,7 @@ app.post('/api/quizzes/:id/submit', requireAuth, (req: Request, res: Response) =
 });
 
 // Assignment Submission (PRD Section 8.8)
-app.post('/api/assignments/:id/submit', requireAuth, (req: Request, res: Response) => {
+app.post('/api/assignments/:id/submit', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const assignmentId = Number(req.params.id);
   const { submissionText, fileName, fileDataUrl } = req.body;
@@ -1855,7 +1947,7 @@ app.post('/api/assignments/:id/submit', requireAuth, (req: Request, res: Respons
 });
 
 // Certificates & PDF Generation (PRD Section 8.9)
-app.get('/api/certificates', requireAuth, (req: Request, res: Response) => {
+app.get('/api/certificates', requireActiveUser, (req: Request, res: Response) => {
   const certificates = db.prepare(`
     SELECT c.*, cr.thumbnail_url
     FROM certificates c
@@ -1930,7 +2022,7 @@ app.get('/api/certificates/:code/pdf', (req: Request, res: Response) => {
 // 8. KYC, TRADING, LEADERBOARD, COMMUNITY, OFFERS, NOTIFICATIONS
 // =============================================================================
 
-app.get('/api/kyc/status', requireAuth, (req: Request, res: Response) => {
+app.get('/api/kyc/status', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const current = db.prepare('SELECT * FROM kyc_submissions WHERE user_id = ? ORDER BY id DESC LIMIT 1').get(userId);
   const history = db.prepare('SELECT * FROM kyc_review_history WHERE user_id = ? ORDER BY id DESC').all(userId);
@@ -1943,7 +2035,7 @@ app.get('/api/kyc/status', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/kyc/submit', requireAuth, (req: Request, res: Response) => {
+app.post('/api/kyc/submit', requireActiveUser, (req: Request, res: Response) => {
   const userId = req.user!.id;
   const {
     aadhaarNumber,
@@ -2036,7 +2128,7 @@ app.post('/api/kyc/submit', requireAuth, (req: Request, res: Response) => {
   res.status(201).json({ success: true, submission });
 });
 
-app.get('/api/trading-videos', requireAuth, (req: Request, res: Response) => {
+app.get('/api/trading-videos', requireActiveUser, (req: Request, res: Response) => {
   const videos = db.prepare(`
     SELECT * FROM trading_videos WHERE is_published = 1 ORDER BY display_order ASC
   `).all() as Array<Record<string, unknown>>;
@@ -2056,7 +2148,7 @@ app.get('/api/trading-videos', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-app.get('/api/leaderboard', requireAuth, (req: Request, res: Response) => {
+app.get('/api/leaderboard', requireActiveUser, (req: Request, res: Response) => {
   const settingRow = db.prepare("SELECT value_json FROM system_settings WHERE key = 'leaderboard_config'").get() as
     | { value_json: string }
     | undefined;
@@ -2115,12 +2207,12 @@ app.get('/api/leaderboard', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-app.get('/api/community', requireAuth, (_req: Request, res: Response) => {
+app.get('/api/community', requireActiveUser, (_req: Request, res: Response) => {
   const links = db.prepare('SELECT * FROM social_links WHERE is_active = 1 ORDER BY display_order ASC').all();
   res.json({ links });
 });
 
-app.get('/api/offers', requireAuth, (_req: Request, res: Response) => {
+app.get('/api/offers', requireActiveUser, (_req: Request, res: Response) => {
   db.prepare(`UPDATE offers SET is_active = 0 WHERE end_at < datetime('now') AND is_active = 1`).run();
   db.prepare(`UPDATE offer_batches SET is_active = 0 WHERE end_at < datetime('now') AND is_active = 1`).run();
 
@@ -2136,14 +2228,14 @@ app.get('/api/offers', requireAuth, (_req: Request, res: Response) => {
   res.json({ batches, offers });
 });
 
-app.get('/api/notifications', requireAuth, (req: Request, res: Response) => {
+app.get('/api/notifications', requireActiveUser, (req: Request, res: Response) => {
   const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 50').all(
     req.user!.id
   );
   res.json({ notifications });
 });
 
-app.put('/api/notifications/:id/read', requireAuth, (req: Request, res: Response) => {
+app.put('/api/notifications/:id/read', requireActiveUser, (req: Request, res: Response) => {
   db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(
     Number(req.params.id),
     req.user!.id
@@ -2151,7 +2243,7 @@ app.put('/api/notifications/:id/read', requireAuth, (req: Request, res: Response
   res.json({ success: true });
 });
 
-app.put('/api/notifications/read-all', requireAuth, (req: Request, res: Response) => {
+app.put('/api/notifications/read-all', requireActiveUser, (req: Request, res: Response) => {
   db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(req.user!.id);
   res.json({ success: true });
 });
@@ -2635,22 +2727,49 @@ app.post('/api/admin/assignments/submissions/:id/review', requireAdmin('courses.
 // 16.9 User Management
 app.get('/api/admin/users', requireAdmin('users.manage'), (req: Request, res: Response) => {
   const q = req.query.q ? `%${String(req.query.q).trim()}%` : '%';
+  const statusFilter = req.query.status ? String(req.query.status).trim().toLowerCase() : 'all';
+
+  let statusClause = '';
+  const params: unknown[] = [q, q, q, q];
+
+  if (['active', 'inactive', 'suspended'].includes(statusFilter)) {
+    statusClause = 'AND u.status = ?';
+    params.push(statusFilter);
+  }
+
   const users = db.prepare(`
-    SELECT u.id, u.email, u.mobile, u.status, u.referred_by_code, u.acquisition_source, u.created_at,
+    SELECT u.id, u.email, u.mobile, u.status, u.activated_at, u.referred_by_code, u.acquisition_source, u.created_at,
            up.full_name, up.date_of_birth, up.state, up.district,
            ac.code as affiliate_code,
            w.available_commission_inr, w.pending_commission_inr, w.bonus_amount_inr, w.total_withdrawn_inr,
            (SELECT status FROM kyc_submissions k WHERE k.user_id = u.id ORDER BY k.id DESC LIMIT 1) as kyc_status,
-           (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = 'paid') as paid_orders_count
+           (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.status = 'paid') as paid_orders_count,
+           (SELECT status FROM payments p WHERE p.user_id = u.id ORDER BY p.id DESC LIMIT 1) as latest_payment_status,
+           (SELECT package_name_snapshot FROM orders o WHERE o.user_id = u.id ORDER BY o.id DESC LIMIT 1) as latest_package_name,
+           (SELECT gross_amount_inr FROM orders o WHERE o.user_id = u.id ORDER BY o.id DESC LIMIT 1) as latest_package_price
     FROM users u
     JOIN user_profiles up ON up.user_id = u.id
     LEFT JOIN affiliate_codes ac ON ac.user_id = u.id
     LEFT JOIN wallet_accounts w ON w.user_id = u.id
-    WHERE up.full_name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ? OR ac.code LIKE ?
+    WHERE (up.full_name LIKE ? OR u.email LIKE ? OR u.mobile LIKE ? OR ac.code LIKE ?)
+      ${statusClause}
     ORDER BY u.id DESC
-  `).all(q, q, q, q);
+  `).all(...params);
 
-  res.json({ users });
+  const totalUsersCount = (db.prepare('SELECT COUNT(*) as c FROM users').get() as { c: number }).c;
+  const activeUsersCount = (db.prepare("SELECT COUNT(*) as c FROM users WHERE status = 'active'").get() as { c: number }).c;
+  const inactiveUsersCount = (db.prepare("SELECT COUNT(*) as c FROM users WHERE status = 'inactive'").get() as { c: number }).c;
+  const suspendedUsersCount = (db.prepare("SELECT COUNT(*) as c FROM users WHERE status = 'suspended'").get() as { c: number }).c;
+
+  res.json({
+    users,
+    counts: {
+      total: totalUsersCount,
+      active: activeUsersCount,
+      inactive: inactiveUsersCount,
+      suspended: suspendedUsersCount,
+    },
+  });
 });
 
 app.post('/api/admin/users', requireAdmin('users.manage'), (req: Request, res: Response) => {
@@ -2684,8 +2803,8 @@ app.post('/api/admin/users', requireAdmin('users.manage'), (req: Request, res: R
     const hash = bcrypt.hashSync(String(password), 10);
     const code = generateUniqueAffiliateCode();
     const uRes = db.prepare(`
-      INSERT INTO users (email, mobile, password_hash, status, referred_by_user_id, referred_by_code, referral_locked, acquisition_source, created_by_admin_id)
-      VALUES (?, ?, ?, 'active', ?, ?, 1, 'admin_manual', ?)
+      INSERT INTO users (email, mobile, password_hash, status, activated_at, referred_by_user_id, referred_by_code, referral_locked, acquisition_source, created_by_admin_id)
+      VALUES (?, ?, ?, 'active', datetime('now'), ?, ?, 1, 'admin_manual', ?)
     `).run(normalizedEmail, normalizedMobile, hash, sponsorId, sponsorCode, req.user!.adminId!);
     const uid = Number(uRes.lastInsertRowid);
 
@@ -2736,16 +2855,55 @@ app.post('/api/admin/users', requireAdmin('users.manage'), (req: Request, res: R
 app.put('/api/admin/users/:id', requireAdmin('users.manage'), (req: Request, res: Response) => {
   const targetUserId = Number(req.params.id);
   const { status, fullName } = req.body;
-  const prev = db.prepare('SELECT status FROM users WHERE id = ?').get(targetUserId) as { status: string } | undefined;
+  const prev = db.prepare('SELECT status, activated_at FROM users WHERE id = ?').get(targetUserId) as { status: string; activated_at: string | null } | undefined;
   if (!prev) {
     res.status(404).json({ error: 'User not found.' });
     return;
   }
 
-  if (status && ['active', 'suspended'].includes(String(status))) {
-    db.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?").run(String(status), targetUserId);
-    logAdminActivity(req.user!.adminId!, req.user!.adminRole!, 'UPDATE_USER_STATUS', `users:${targetUserId}`, prev.status, String(status));
+  if (status && ['active', 'inactive', 'suspended'].includes(String(status))) {
+    const nextStatus = String(status);
+    runTransaction(() => {
+      if (nextStatus === 'active') {
+        db.prepare(`
+          UPDATE users
+          SET status = 'active',
+              activated_at = COALESCE(activated_at, datetime('now')),
+              updated_at = datetime('now')
+          WHERE id = ?
+        `).run(targetUserId);
+
+        // Guarantee affiliate code exists upon activation
+        const existingCode = db.prepare('SELECT code FROM affiliate_codes WHERE user_id = ?').get(targetUserId);
+        if (!existingCode) {
+          const code = generateUniqueAffiliateCode();
+          db.prepare('INSERT INTO affiliate_codes (user_id, code, clicks, is_active) VALUES (?, ?, 0, 1)').run(targetUserId, code);
+        }
+
+        // Activate any pending package orders so courses are enrolled
+        const pendingOrder = db.prepare("SELECT * FROM orders WHERE user_id = ? AND status != 'paid' ORDER BY id DESC LIMIT 1").get(targetUserId) as
+          | { id: number; razorpay_order_id: string }
+          | undefined;
+        if (pendingOrder) {
+          try {
+            verifyAndActivatePayment({
+              razorpayOrderId: pendingOrder.razorpay_order_id,
+              razorpayPaymentId: `pay_manual_adm_${Date.now()}`,
+              razorpaySignature: 'admin_manual_activated',
+              verifiedBy: 'admin_manual',
+            });
+          } catch (_err) {
+            // Already handled
+          }
+        }
+      } else {
+        db.prepare("UPDATE users SET status = ?, updated_at = datetime('now') WHERE id = ?").run(nextStatus, targetUserId);
+      }
+    });
+
+    logAdminActivity(req.user!.adminId!, req.user!.adminRole!, 'UPDATE_USER_STATUS', `users:${targetUserId}`, prev.status, nextStatus);
   }
+
   if (fullName) {
     db.prepare("UPDATE user_profiles SET full_name = ?, updated_at = datetime('now') WHERE user_id = ?").run(String(fullName).trim(), targetUserId);
   }

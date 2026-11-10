@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import nodemailer from 'nodemailer';
-import { db, runTransaction } from './db.ts';
+import { db, runTransaction, generateUniqueAffiliateCode } from './db.ts';
 import { PLATFORM_CONFIG } from './config.ts';
 
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || 'rzp_test_EdurtLiveGatewayKey';
@@ -213,6 +213,15 @@ export function verifyAndActivatePayment(params: {
     // 2. Mark order paid
     db.prepare(`UPDATE orders SET status = 'paid', updated_at = datetime('now') WHERE id = ?`).run(order.id);
 
+    // 2b. Automatically change account status from Inactive to Active & record activation timestamp (PRD Extra Feature 01)
+    db.prepare(`
+      UPDATE users
+      SET status = 'active',
+          activated_at = COALESCE(activated_at, datetime('now')),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `).run(order.user_id);
+
     // 3. Provision Lifetime Course Enrollments for all courses in package
     const pkgCourses = db.prepare('SELECT course_id FROM package_courses WHERE package_id = ?').all(order.package_id) as Array<{
       course_id: number;
@@ -241,6 +250,16 @@ export function verifyAndActivatePayment(params: {
       full_name: string;
       own_affiliate_code: string;
     };
+
+    // 4b. Ensure user has a permanent 6-character affiliate code generated upon activation
+    let buyerAffCode = buyer.own_affiliate_code;
+    if (!buyerAffCode) {
+      buyerAffCode = generateUniqueAffiliateCode();
+      db.prepare(`
+        INSERT INTO affiliate_codes (user_id, code, clicks, is_active)
+        VALUES (?, ?, 0, 1)
+      `).run(buyer.id, buyerAffCode);
+    }
 
     const existingCommission = db.prepare('SELECT id FROM affiliate_commissions WHERE payment_id = ?').get(paymentId);
     let commissionCreditedInr = 0;
@@ -321,13 +340,18 @@ export function verifyAndActivatePayment(params: {
       }
     }
 
-    // 5. Notify Buyer (Welcome + Payment Confirmation)
+    // 5. Notify Buyer (Account Activation + Welcome + Payment Confirmation)
     createUserNotification(
       buyer.id,
-      `Package Activated: ${order.package_name_snapshot}`,
-      `Your payment of ₹${order.gross_amount_inr.toLocaleString('en-IN')} is verified. Lifetime access to ${pkgCourses.length} course(s) is now unlocked.`,
+      `Account Activated & Full Dashboard Unlocked!`,
+      `Your payment of ₹${order.gross_amount_inr.toLocaleString('en-IN')} for ${order.package_name_snapshot} is verified. Your account is active, your affiliate code (${buyerAffCode}) is live, and all courses are unlocked.`,
       '/dashboard?tab=courses'
     );
+    sendPlatformEmail(buyer.id, buyer.email, 'account_activated', {
+      name: buyer.full_name,
+      package_name: order.package_name_snapshot,
+      affiliate_code: buyerAffCode || 'ACTIVE',
+    });
     sendPlatformEmail(buyer.id, buyer.email, 'payment_confirmation', {
       name: buyer.full_name,
       package_name: order.package_name_snapshot,
@@ -336,7 +360,7 @@ export function verifyAndActivatePayment(params: {
     });
     sendPlatformEmail(buyer.id, buyer.email, 'welcome_email', {
       name: buyer.full_name,
-      affiliate_code: buyer.own_affiliate_code || 'ACTIVE',
+      affiliate_code: buyerAffCode || 'ACTIVE',
     });
 
     return {

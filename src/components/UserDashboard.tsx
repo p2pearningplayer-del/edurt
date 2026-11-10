@@ -654,6 +654,283 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
     { id: 'notifications', label: '11. Notifications', icon: Bell },
   ];
 
+  const isAccountInactive = user?.status === 'inactive' || user?.isActivated === false;
+
+  if (isAccountInactive) {
+    const pkgName = pendingOrder?.packageName || user?.selectedPackage?.name || 'Full-Stack Executive Package';
+    const pkgPrice = Number(pendingOrder?.grossAmountInr || user?.selectedPackage?.price || 1499);
+
+    return (
+      <div className="locked-dashboard-container" style={{ minHeight: '100vh', background: 'var(--bg-canvas)', color: 'var(--text-primary)' }}>
+        {/* Navigation bar for inactive user with brand and logout */}
+        <header
+          style={{
+            borderBottom: '1px solid var(--border-neutral)',
+            background: 'rgba(12, 17, 16, 0.85)',
+            backdropFilter: 'blur(12px)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
+            padding: '1rem 1.5rem',
+          }}
+        >
+          <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div
+                style={{
+                  width: '2.4rem',
+                  height: '2.4rem',
+                  borderRadius: '0.6rem',
+                  background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  fontWeight: 800,
+                  fontSize: '1.2rem',
+                }}
+              >
+                L
+              </div>
+              <div>
+                <div style={{ fontWeight: 800, letterSpacing: '-0.02em', fontSize: '1.15rem' }}>
+                  LearnUp <span style={{ color: 'var(--color-primary)' }}>India</span>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Student &amp; Partner Portal
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 600 }}>{user.fullName}</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{user.email}</div>
+              </div>
+              <button
+                id="locked-dashboard-logout-btn"
+                className="btn btn-secondary btn-sm"
+                onClick={onLogout}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              >
+                <LogOut size={14} />
+                <span>Logout</span>
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* Hero Alert / Activation Card */}
+        <div style={{ maxWidth: '980px', margin: '2.5rem auto', padding: '0 1.25rem' }}>
+          {/* Main Locked Card */}
+          <div
+            className="surface-card"
+            style={{
+              padding: '2.5rem 2rem',
+              borderRadius: 'var(--radius-lg)',
+              background: 'linear-gradient(180deg, rgba(24, 34, 32, 0.95) 0%, rgba(15, 23, 21, 0.98) 100%)',
+              border: '1px solid rgba(217, 119, 6, 0.35)',
+              boxShadow: '0 20px 45px -15px rgba(0, 0, 0, 0.6), 0 0 35px -5px rgba(217, 119, 6, 0.15)',
+              textAlign: 'center',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Ambient gold glow */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '-80px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                width: '320px',
+                height: '160px',
+                background: 'radial-gradient(ellipse at center, rgba(217, 119, 6, 0.25) 0%, rgba(217, 119, 6, 0) 70%)',
+                pointerEvents: 'none',
+              }}
+            />
+
+            {/* Account Inactive Badge */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', padding: '0.4rem 1rem', borderRadius: '999px', background: 'rgba(217, 119, 6, 0.15)', border: '1px solid rgba(217, 119, 6, 0.45)', color: '#fbbf24', fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '1.25rem' }}>
+              <Lock size={14} />
+              <span>Account Inactive</span>
+            </div>
+
+            {/* Exact Required Headline */}
+            <h1
+              id="locked-dashboard-headline"
+              style={{
+                fontSize: '2.25rem',
+                fontWeight: 800,
+                letterSpacing: '-0.02em',
+                color: '#ffffff',
+                marginBottom: '1rem',
+                lineHeight: 1.2,
+              }}
+            >
+              Your Account Is Not Active Yet!
+            </h1>
+
+            {/* Exact Required Message */}
+            <p
+              id="locked-dashboard-message"
+              style={{
+                fontSize: '1.08rem',
+                color: 'var(--text-secondary)',
+                maxWidth: '680px',
+                margin: '0 auto 2rem auto',
+                lineHeight: 1.6,
+              }}
+            >
+              Please complete your package payment to activate your account and unlock your dashboard, courses, affiliate features, and all platform benefits.
+            </p>
+
+            {/* Package & Payment Status Details Card */}
+            <div
+              style={{
+                maxWidth: '620px',
+                margin: '0 auto 2rem auto',
+                background: 'rgba(12, 17, 16, 0.75)',
+                border: '1px solid var(--border-strong)',
+                borderRadius: 'var(--radius-md)',
+                padding: '1.5rem',
+                textAlign: 'left',
+              }}
+            >
+              <div style={{ fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '1rem', fontWeight: 600 }}>
+                Selected Package &amp; Account Status Summary
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.25rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Selected Package Name</div>
+                  <div id="locked-selected-package-name" style={{ fontSize: '1.1rem', fontWeight: 700, color: '#f8fafc', marginTop: '0.2rem' }}>
+                    {pkgName}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Package Price</div>
+                  <div id="locked-selected-package-price" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--color-primary)', marginTop: '0.2rem' }}>
+                    ₹{pkgPrice.toLocaleString('en-IN')}
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Payment Status</div>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <span id="locked-payment-status-badge" className="status-badge badge-warning" style={{ fontWeight: 700 }}>
+                      Pending
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Account Status</div>
+                  <div style={{ marginTop: '0.25rem' }}>
+                    <span id="locked-account-status-badge" className="status-badge badge-danger" style={{ fontWeight: 700 }}>
+                      Inactive
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Primary CTA Button */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+              <button
+                id="activate-my-account-btn"
+                className="btn btn-primary"
+                onClick={onOpenCheckout}
+                style={{
+                  padding: '0.95rem 2.25rem',
+                  fontSize: '1.1rem',
+                  fontWeight: 700,
+                  boxShadow: '0 8px 25px -5px rgba(16, 185, 129, 0.45)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.65rem',
+                }}
+              >
+                <span>Activate My Account / Complete Payment</span>
+                <ExternalLink size={18} />
+              </button>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Instant activation via Razorpay UPI, Cards &amp; NetBanking · 256-bit Secure
+              </div>
+            </div>
+          </div>
+
+          {/* Locked Dashboard Features Preview */}
+          <div style={{ marginTop: '2.5rem' }}>
+            <h3 style={{ fontSize: '1.15rem', color: 'var(--text-secondary)', marginBottom: '1rem', textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              Locked Features Ready for Instant Activation
+            </h3>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+              {[
+                { title: 'Executive Video Courses', desc: '100% video lectures, lesson progress tracking, and notes.', icon: BookOpen },
+                { title: '70% Direct Affiliate Commissions', desc: 'Earn ₹3,850 - ₹7,000 on every direct package referral.', icon: TrendingUp },
+                { title: 'Verified Completion Certificates', desc: 'Signed, verifiable tamper-proof certificates with unique ID.', icon: Award },
+                { title: 'Daily Bank & UPI Withdrawals', desc: 'Express payouts directly into your linked bank or UPI ID.', icon: Wallet },
+                { title: 'VIP Trading Room & Community', desc: 'Exclusive access to trading masterclasses and peer groups.', icon: Users },
+                { title: 'Full Financial Wallet & Ledger', desc: 'Real-time earnings tracking, referral audits, and ledger.', icon: ShieldCheck },
+              ].map((f, i) => {
+                const Icon = f.icon;
+                return (
+                  <div
+                    key={i}
+                    className="surface-card"
+                    style={{
+                      padding: '1.25rem',
+                      opacity: 0.75,
+                      border: '1px dashed var(--border-neutral)',
+                      position: 'relative',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                      <div
+                        style={{
+                          width: '2.25rem',
+                          height: '2.25rem',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        <Icon size={18} />
+                      </div>
+                      <span className="status-badge badge-neutral" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.7rem' }}>
+                        <Lock size={10} /> Locked
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '0.35rem' }}>
+                      {f.title}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                      {f.desc}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Need assistance footer */}
+          <div style={{ textAlign: 'center', marginTop: '2.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            Questions or payment assistance? Reach out to support at{' '}
+            <a href="mailto:team@learnupindia.com" style={{ color: 'var(--color-primary)', textDecoration: 'underline' }}>
+              team@learnupindia.com
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       {/* SIDEBAR NAVIGATION (All 12 PRD 6.4 items) */}
