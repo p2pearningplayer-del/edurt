@@ -1,0 +1,17 @@
+DirectoryIndex index.php index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Route all /api/* requests to the Hostinger MySQL PHP API Gateway
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # Serve existing static files and directories directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # SPA fallback to index.php
+  RewriteRule ^ index.php [QSA,L]
+</IfModule>

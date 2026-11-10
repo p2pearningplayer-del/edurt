@@ -21,5 +21,22 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    allowedHosts: true,
+  },
+  preview: {
+    port: 3000,
+    host: true,
+    allowedHosts: true,
+  },
+  build: {
+    outDir: 'dist',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/app.js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]',
+      },
+    },
   },
 });
+

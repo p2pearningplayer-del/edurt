@@ -14,9 +14,10 @@ import { PublicWebsite } from './components/PublicWebsite.tsx';
 import { UserDashboard, type DashboardTab } from './components/UserDashboard.tsx';
 import { MasterAdminPanel } from './components/MasterAdminPanel.tsx';
 import { AuthAndCheckoutModals, type PendingOrderInfo } from './components/AuthAndCheckoutModals.tsx';
+import { DEFAULT_SITE_DATA } from './defaultSiteData.ts';
 
 export function App() {
-  const [siteData, setSiteData] = useState<any | null>(null);
+  const [siteData, setSiteData] = useState<any>(DEFAULT_SITE_DATA);
   const [isPreviewDraft, setIsPreviewDraft] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<any | null>(null);
@@ -31,20 +32,26 @@ export function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const fetchSiteData = async (preview = false) => {
-    const res = await fetch(`/api/public/site${preview ? '?preview=draft' : ''}`);
-    const data = await res.json();
-    setSiteData(data);
-    setIsPreviewDraft(preview);
+    try {
+      const res = await fetch(`/api/public/site${preview ? '?preview=draft' : ''}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.siteConfig) {
+        setSiteData(data);
+        setIsPreviewDraft(preview);
 
-    // Apply CMS theme colors dynamically to CSS root tokens
-    if (data?.siteConfig?.theme) {
-      const root = document.documentElement;
-      if (data.siteConfig.theme.primaryColor) {
-        root.style.setProperty('--color-primary', data.siteConfig.theme.primaryColor);
+        if (data?.siteConfig?.theme) {
+          const root = document.documentElement;
+          if (data.siteConfig.theme.primaryColor) {
+            root.style.setProperty('--color-primary', data.siteConfig.theme.primaryColor);
+          }
+          if (data.siteConfig.theme.accentColor) {
+            root.style.setProperty('--color-accent', data.siteConfig.theme.accentColor);
+          }
+        }
       }
-      if (data.siteConfig.theme.accentColor) {
-        root.style.setProperty('--color-accent', data.siteConfig.theme.accentColor);
-      }
+    } catch {
+      // Keep DEFAULT_SITE_DATA active if API is unreachable
     }
   };
 

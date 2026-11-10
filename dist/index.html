@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LearnUp India (learnupindia.com) — Executive E-Learning &amp; 70% Direct Partner Platform</title>
+    <meta
+      name="description"
+      content="Master high-value digital systems, quantitative market literacy, and AI automation with 100% verified streaming courses, downloadable PDF certificates, and 70% direct referral commissions."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="/assets/app.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Automatic fallback for production static / Hostinger Git deployments where Vite dev server is not running
+      window.addEventListener('DOMContentLoaded', function () {
+        setTimeout(function () {
+          var root = document.getElementById('root');
+          if (root && !root.hasChildNodes()) {
+            var css = document.createElement('link');
+            css.rel = 'stylesheet';
+            css.href = '/assets/index.css';
+            document.head.appendChild(css);
+            var js = document.createElement('script');
+            js.type = 'module';
+            js.src = '/assets/app.js';
+            document.body.appendChild(js);
+          }
+        }, 250);
+      });
+    </script>
+  </body>
+</html>
