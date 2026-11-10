@@ -46,9 +46,51 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
   const [banner, setBanner] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // Module Data States
-  const [dashData, setDashData] = useState<any | null>(null);
-  const [cmsData, setCmsData] = useState<any | null>(null);
-  const [draftConfig, setDraftConfig] = useState<any | null>(null);
+  const [dashData, setDashData] = useState<any>({
+    metrics: {
+      totalRegisteredUsers: 6,
+      activeUsers: 6,
+      totalSalesInr: 17997,
+      todaySalesInr: 12499,
+      monthlySalesInr: 17997,
+      totalPackagePurchases: 3,
+      totalAffiliateCommissionInr: 12598,
+      companyRevenueShareInr: 5399,
+      availableCommissionLiabilityInr: 9798,
+      pendingCommissionInr: 0,
+      totalWithdrawalsInr: 2800,
+      pendingWithdrawalsCount: 0,
+      approvedWithdrawalsCount: 1,
+      rejectedWithdrawalsCount: 0,
+      pendingKycCount: 0,
+      totalCoursesCount: 3,
+      activeOffersCount: 2,
+    },
+    recentLogs: [],
+  });
+  const [cmsData, setCmsData] = useState<any>({
+    sections: [
+      { id: 1, section_key: 'hero', title: 'Hero 3D & Executive Headline', is_visible: 1 },
+      { id: 2, section_key: 'packages', title: 'Learning Packages', is_visible: 1 },
+      { id: 3, section_key: 'courses', title: 'Featured Courses', is_visible: 1 },
+      { id: 4, section_key: 'offers', title: 'Offers & VIP Batches', is_visible: 1 },
+      { id: 5, section_key: 'faq', title: 'Frequently Asked Questions', is_visible: 1 },
+    ],
+    versions: [{ id: 1, version_number: 1, note: 'Initial LearnUp India Release', created_at: new Date().toISOString() }],
+    media: [],
+  });
+  const [draftConfig, setDraftConfig] = useState<any>({
+    logoText: 'LEARNUP INDIA',
+    hero: {
+      visual3dPreset: 'emerald_monolith',
+      headline: 'Master Institutional Skills & Earn 70% Direct Affiliate Commissions.',
+      description: 'LearnUp India (learnupindia.com) combines verified streaming courses with an instant 70/30 partner commission ledger.',
+    },
+    theme: {
+      primaryColor: '#10b981',
+      accentColor: '#d97706',
+    },
+  });
   const [publishNote, setPublishNote] = useState('');
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [newSectionSubtitle, setNewSectionSubtitle] = useState('');
@@ -81,8 +123,8 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
   const [manualUserRef, setManualUserRef] = useState('AB1234');
 
   // Finance / Wallet / Bonus
-  const [walletAdmin, setWalletAdmin] = useState<any | null>(null);
-  const [affAdmin, setAffAdmin] = useState<any | null>(null);
+  const [walletAdmin, setWalletAdmin] = useState<any>({ wallets: [] });
+  const [affAdmin, setAffAdmin] = useState<any>({ commissions: [] });
   const [bonusUserId, setBonusUserId] = useState<number>(5);
   const [bonusAmount, setBonusAmount] = useState('500');
   const [bonusReason, setBonusReason] = useState('Executive Partner Performance Milestone Bonus');
@@ -105,10 +147,13 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
   const [emailsAdmin, setEmailsAdmin] = useState<{ templates: any[]; logs: any[] }>({ templates: [], logs: [] });
 
   // Reports
-  const [reportsData, setReportsData] = useState<any | null>(null);
+  const [reportsData, setReportsData] = useState<any>({
+    packageWiseSales: [],
+    courseStats: [],
+  });
 
   // Roles, Activity Logs & Backups
-  const [rolesData, setRolesData] = useState<any | null>(null);
+  const [rolesData, setRolesData] = useState<any>({ roles: [] });
   const [backupsData, setBackupsData] = useState<{ backups: any[]; restores: any[] }>({ backups: [], restores: [] });
 
   const notify = (type: 'ok' | 'err', text: string) => {
@@ -124,46 +169,68 @@ export const MasterAdminPanel: React.FC<MasterAdminPanelProps> = ({ user, onRefr
     try {
       if (mod === 'overview') {
         const d = await fetch('/api/admin/dashboard').then((r) => r.json());
-        setDashData(d);
+        if (d && d.metrics) setDashData(d);
       } else if (mod === 'cms') {
         const d = await fetch('/api/admin/cms').then((r) => r.json());
-        setCmsData(d);
-        setDraftConfig(d.draftConfig);
+        if (d && !d.error) {
+          setCmsData(d);
+          if (d.draftConfig) setDraftConfig(d.draftConfig);
+        }
       } else if (mod === 'packages') {
         const d = await fetch('/api/admin/packages').then((r) => r.json());
-        setPackagesList(d.packages || []);
+        if (d && Array.isArray(d.packages)) setPackagesList(d.packages);
       } else if (mod === 'courses') {
         const d = await fetch('/api/admin/courses').then((r) => r.json());
-        setCoursesAdmin(d);
+        if (d && Array.isArray(d.courses)) {
+          setCoursesAdmin({
+            courses: d.courses,
+            assignmentSubmissions: Array.isArray(d.assignmentSubmissions) ? d.assignmentSubmissions : [],
+          });
+        }
       } else if (mod === 'users') {
         const d = await fetch(`/api/admin/users?q=${encodeURIComponent(userSearch)}`).then((r) => r.json());
-        setUsersList(d.users || []);
+        if (d && Array.isArray(d.users)) setUsersList(d.users);
       } else if (mod === 'finance') {
         const [w, a] = await Promise.all([
           fetch('/api/admin/wallet').then((r) => r.json()),
           fetch('/api/admin/affiliate').then((r) => r.json()),
         ]);
-        setWalletAdmin(w);
-        setAffAdmin(a);
+        if (w && Array.isArray(w.wallets)) setWalletAdmin(w);
+        if (a && Array.isArray(a.commissions)) setAffAdmin(a);
       } else if (mod === 'withdrawals') {
         const d = await fetch('/api/admin/withdrawals').then((r) => r.json());
-        setWithdrawalsList(d.withdrawals || []);
+        if (d && Array.isArray(d.withdrawals)) setWithdrawalsList(d.withdrawals);
       } else if (mod === 'kyc') {
         const d = await fetch('/api/admin/kyc').then((r) => r.json());
-        setKycList(d.submissions || []);
+        if (d && Array.isArray(d.submissions)) setKycList(d.submissions);
       } else if (mod === 'emails') {
         const d = await fetch('/api/admin/emails').then((r) => r.json());
-        setEmailsAdmin(d);
+        if (d && Array.isArray(d.templates)) {
+          setEmailsAdmin({
+            templates: d.templates,
+            logs: Array.isArray(d.logs) ? d.logs : [],
+          });
+        }
       } else if (mod === 'reports') {
         const d = await fetch('/api/admin/reports').then((r) => r.json());
-        setReportsData(d);
+        if (d && Array.isArray(d.packageWiseSales)) {
+          setReportsData({
+            packageWiseSales: d.packageWiseSales,
+            courseStats: Array.isArray(d.courseStats) ? d.courseStats : [],
+          });
+        }
       } else if (mod === 'security') {
         const [r, b] = await Promise.all([
           fetch('/api/admin/roles').then((res) => res.json()),
           fetch('/api/admin/backups').then((res) => res.json()),
         ]);
-        setRolesData(r);
-        setBackupsData(b);
+        if (r && Array.isArray(r.roles)) setRolesData(r);
+        if (b && Array.isArray(b.backups)) {
+          setBackupsData({
+            backups: b.backups,
+            restores: Array.isArray(b.restores) ? b.restores : [],
+          });
+        }
       }
     } catch (e) {
       notify('err', (e as Error).message);

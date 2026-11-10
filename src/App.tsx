@@ -59,14 +59,15 @@ export function App() {
     try {
       const res = await fetch('/api/auth/me');
       if (!res.ok) {
-        setCurrentUser(null);
         return;
       }
       const data = await res.json();
-      setCurrentUser(data.user);
-      setPendingOrder(data.pendingOrder || null);
+      if (data && data.user) {
+        setCurrentUser(data.user);
+        setPendingOrder(data.pendingOrder || null);
+      }
     } catch {
-      setCurrentUser(null);
+      // Keep existing currentUser state if already logged in
     }
   };
 
@@ -90,7 +91,10 @@ export function App() {
     setModalMode('register');
   };
 
-  const handleAuthSuccess = (user: any, _token: string, newOrder?: PendingOrderInfo | null) => {
+  const handleAuthSuccess = (user: any, token: string, newOrder?: PendingOrderInfo | null) => {
+    if (token) {
+      localStorage.setItem('edurt_token', token);
+    }
     setCurrentUser(user);
     if (newOrder) {
       setPendingOrder(newOrder);
@@ -98,13 +102,18 @@ export function App() {
       setActiveView('dashboard');
     } else {
       setModalMode(null);
-      setActiveView(user.adminId ? 'admin' : 'dashboard');
+      setActiveView(user?.adminId ? 'admin' : 'dashboard');
       fetchCurrentSession();
     }
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
+    localStorage.removeItem('edurt_token');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {
+      // ignore network error on logout
+    }
     setCurrentUser(null);
     setPendingOrder(null);
     setActiveView('public');
@@ -293,7 +302,7 @@ export function App() {
       </header>
 
       {/* ACTIVE SYSTEM VIEW */}
-      {activeView === 'public' && (
+      {(activeView === 'public' || !currentUser || (activeView === 'admin' && !currentUser?.adminId)) && (
         <PublicWebsite
           siteData={siteData}
           onStartRegistrationWithPackage={handleStartRegistration}

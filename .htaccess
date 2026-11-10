@@ -4,6 +4,10 @@ DirectoryIndex index.php index.html
   RewriteEngine On
   RewriteBase /
 
+  # Preserve Authorization header on Apache / LiteSpeed FastCGI
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
   # Route all /api/* requests to the Hostinger MySQL PHP API Gateway
   RewriteRule ^api/(.*)$ api/index.php [QSA,L]
 

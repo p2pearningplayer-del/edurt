@@ -48,16 +48,17 @@ function getLearnUpPdo(): ?PDO {
 
 function ensureMysqlSchemaAndSeed(PDO $pdo): void {
     try {
-        $stmt = $pdo->query("SHOW TABLES LIKE 'users'");
-        $exists = $stmt && $stmt->fetchColumn();
-        if ($exists) {
-            $cntStmt = $pdo->query("SELECT COUNT(*) FROM `users`");
-            if ($cntStmt && (int)$cntStmt->fetchColumn() > 0) {
+        $stmt = $pdo->query("SHOW TABLES LIKE 'offer_batches'");
+        $hasBatches = $stmt && $stmt->fetchColumn();
+        if ($hasBatches) {
+            $cntUsers = (int)$pdo->query("SELECT COUNT(*) FROM `users`")->fetchColumn();
+            $cntContent = (int)$pdo->query("SELECT COUNT(*) FROM `website_content`")->fetchColumn();
+            if ($cntUsers >= 9 && $cntContent >= 1) {
                 return;
             }
         }
     } catch (Throwable $e) {
-        // Proceed to initialize schema
+        // Proceed to initialize schema and seed data
     }
 
     $schemaFile = dirname(__DIR__) . '/database/schema.mysql.sql';

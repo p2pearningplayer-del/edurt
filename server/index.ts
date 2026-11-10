@@ -77,6 +77,10 @@ function getTokenFromRequest(req: Request): string | null {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     return authHeader.slice(7);
   }
+  const xToken = req.headers['x-auth-token'];
+  if (typeof xToken === 'string' && xToken.trim()) {
+    return xToken.trim();
+  }
   if (req.cookies && req.cookies.edurt_token) {
     return req.cookies.edurt_token;
   }

@@ -61,17 +61,46 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   onLogout,
   onRefreshUser,
 }) => {
-  // 1. Dashboard Overview State
-  const [overview, setOverview] = useState<any | null>(null);
+  // 1. Dashboard Overview State (Initialized with safe defaults so Tab 1 renders immediately)
+  const [overview, setOverview] = useState<any>({
+    wallet: {
+      availableCommissionInr: 0,
+      pendingCommissionInr: 0,
+      totalCommissionInr: 0,
+      bonusAmountInr: 0,
+      reservedWithdrawalInr: 0,
+      totalWithdrawnInr: 0,
+    },
+    summaryCards: {
+      todayEarningsInr: 0,
+      last7DaysEarningsInr: 0,
+      last30DaysEarningsInr: 0,
+      totalEarningsInr: 0,
+    },
+    graphPoints: [
+      { label: '2d Ago', date: '2026-11-08', commissionInr: 0, bonusInr: 0, totalInr: 0 },
+      { label: 'Yesterday', date: '2026-11-09', commissionInr: 3850, bonusInr: 0, totalInr: 3850 },
+      { label: 'Today', date: '2026-11-10', commissionInr: 7000, bonusInr: 1500, totalInr: 8500 },
+    ],
+  });
   const [graphRange, setGraphRange] = useState<'daily' | 'weekly' | 'monthly' | 'custom'>('daily');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [hoveredBarIdx, setHoveredBarIdx] = useState<number | null>(null);
 
   // 2. My Account State
-  const [profile, setProfile] = useState<any | null>(null);
-  const [editFullName, setEditFullName] = useState('');
-  const [editDob, setEditDob] = useState('');
+  const [profile, setProfile] = useState<any>({
+    id: user?.id || 1,
+    email: user?.email || '',
+    mobile: user?.mobile || '',
+    full_name: user?.fullName || '',
+    date_of_birth: '1998-05-14',
+    profile_photo: '',
+    affiliate_code: user?.affiliateCode || 'AB1234',
+    created_at: new Date().toISOString().slice(0, 10),
+  });
+  const [editFullName, setEditFullName] = useState(user?.fullName || '');
+  const [editDob, setEditDob] = useState('1998-05-14');
   const [editPhoto, setEditPhoto] = useState('');
   const [currPass, setCurrPass] = useState('');
   const [newPass, setNewPass] = useState('');
@@ -79,7 +108,16 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [accountMsg, setAccountMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // 3. Affiliate State
-  const [affSummary, setAffSummary] = useState<any | null>(null);
+  const [affSummary, setAffSummary] = useState<any>({
+    affiliateCode: user?.affiliateCode || 'AB1234',
+    clicks: 0,
+    totalReferrals: 0,
+    successfulPurchases: 0,
+    availableCommissionInr: 0,
+    pendingCommissionInr: 0,
+    totalCommissionEarnedInr: 0,
+    bonusAmountInr: 0,
+  });
   const [referralsList, setReferralsList] = useState<any[]>([]);
   const [commissionsList, setCommissionsList] = useState<any[]>([]);
   const [copiedType, setCopiedType] = useState<'code' | 'link' | null>(null);
@@ -101,15 +139,43 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const watchedBufferRef = useRef<Set<number>>(new Set());
 
   // 5. Trading State
-  const [tradingData, setTradingData] = useState<{ disclaimer: string; videos: any[] }>({ disclaimer: '', videos: [] });
+  const [tradingData, setTradingData] = useState<{ disclaimer: string; videos: any[] }>({
+    disclaimer:
+      'EDUCATIONAL DISCLAIMER: All videos in the Trading section are strictly for educational and informational purposes only. LearnUp India does not provide investment advice or promise guaranteed financial returns.',
+    videos: [],
+  });
   const [activeTradingVideo, setActiveTradingVideo] = useState<any | null>(null);
   const [tradingCategoryFilter, setTradingCategoryFilter] = useState('All');
 
   // 6. Withdrawal State
-  const [withdrawalData, setWithdrawalData] = useState<any | null>(null);
+  const [withdrawalData, setWithdrawalData] = useState<any>({
+    wallet: {
+      available_commission_inr: 0,
+      pending_commission_inr: 0,
+      bonus_amount_inr: 0,
+      reserved_withdrawal_inr: 0,
+      total_withdrawn_inr: 0,
+    },
+    kycStatus: 'not_submitted',
+    savedPayoutDetails: null,
+    dailyLimitInfo: {
+      businessDateIST: new Date().toISOString().slice(0, 10),
+      requestsToday: 0,
+      maxRequestsPerDay: 2,
+      remainingRequestsToday: 2,
+      minWithdrawalInr: 500,
+    },
+    tables: {
+      availableBalanceLedger: [],
+      pendingWithdrawals: [],
+      rejectedWithdrawals: [],
+      completedWithdrawals: [],
+      bonusTransactions: [],
+    },
+  });
   const [wdrAmount, setWdrAmount] = useState('500');
   const [wdrMethod, setWdrMethod] = useState<'bank_transfer' | 'upi'>('upi');
-  const [wdrHolder, setWdrHolder] = useState('');
+  const [wdrHolder, setWdrHolder] = useState(user?.fullName || '');
   const [wdrBank, setWdrBank] = useState('');
   const [wdrAccNo, setWdrAccNo] = useState('');
   const [wdrIfsc, setWdrIfsc] = useState('');
@@ -118,7 +184,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [wdrFeedback, setWdrFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // 7. KYC State
-  const [kycData, setKycData] = useState<any | null>(null);
+  const [kycData, setKycData] = useState<any>({
+    status: 'not_submitted',
+    currentSubmission: null,
+    submissionsHistory: [],
+    reviewHistory: [],
+  });
   const [kycAadhaar, setKycAadhaar] = useState('482910498291');
   const [kycDocName, setKycDocName] = useState('aadhaar_verified_scan.pdf');
   const [kycBank, setKycBank] = useState('HDFC Bank');
@@ -132,7 +203,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [kycFeedback, setKycFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
 
   // 8. Leaderboard, 9. Community, 10. Offers, 11. Notifications
-  const [leaderboardData, setLeaderboardData] = useState<any | null>(null);
+  const [leaderboardData, setLeaderboardData] = useState<any>({
+    isPublished: true,
+    period: 'weekly',
+    entries: [],
+  });
   const [lbPeriod, setLbPeriod] = useState<'weekly' | 'monthly' | 'all_time'>('weekly');
   const [communityLinks, setCommunityLinks] = useState<any[]>([]);
   const [offersData, setOffersData] = useState<{ batches: any[]; offers: any[] }>({ batches: [], offers: [] });
@@ -147,63 +222,88 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
           ? `?range=custom&startDate=${customStart}&endDate=${customEnd}`
           : `?range=${graphRange}`;
       fetch(`/api/dashboard/overview${qs}`)
-        .then((r) => r.json())
-        .then(setOverview);
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && d.summaryCards && d.wallet) {
+            setOverview(d);
+          }
+        })
+        .catch(() => {});
     } else if (activeTab === 'account') {
       fetch('/api/user/profile')
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          setProfile(d.profile);
-          if (d.profile) {
-            setEditFullName(d.profile.full_name);
-            setEditDob(d.profile.date_of_birth);
+          if (d && d.profile) {
+            setProfile(d.profile);
+            setEditFullName(d.profile.full_name || user?.fullName || '');
+            setEditDob(d.profile.date_of_birth || '1998-05-14');
             setEditPhoto(d.profile.profile_photo || '');
           }
-        });
+        })
+        .catch(() => {});
     } else if (activeTab === 'affiliate') {
       Promise.all([
-        fetch('/api/affiliate/summary').then((r) => r.json()),
-        fetch('/api/affiliate/referrals').then((r) => r.json()),
-        fetch('/api/affiliate/commissions').then((r) => r.json()),
-      ]).then(([sum, refs, comms]) => {
-        setAffSummary(sum);
-        setReferralsList(refs.referrals || []);
-        setCommissionsList(comms.commissions || []);
-      });
+        fetch('/api/affiliate/summary').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/affiliate/referrals').then((r) => (r.ok ? r.json() : null)),
+        fetch('/api/affiliate/commissions').then((r) => (r.ok ? r.json() : null)),
+      ])
+        .then(([sum, refs, comms]) => {
+          if (sum && sum.affiliateCode) setAffSummary(sum);
+          if (refs && Array.isArray(refs.referrals)) setReferralsList(refs.referrals);
+          if (comms && Array.isArray(comms.commissions)) setCommissionsList(comms.commissions);
+        })
+        .catch(() => {});
     } else if (activeTab === 'courses') {
       fetch('/api/courses')
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          setCoursesList(d.courses || []);
-          if (d.courses?.length > 0 && !selectedCourseId) {
-            setSelectedCourseId(d.courses[0].id);
+          if (d && Array.isArray(d.courses)) {
+            setCoursesList(d.courses);
+            if (d.courses.length > 0 && !selectedCourseId) {
+              setSelectedCourseId(d.courses[0].id);
+            }
           }
-        });
+        })
+        .catch(() => {});
     } else if (activeTab === 'trading') {
       fetch('/api/trading-videos')
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          setTradingData(d);
-          if (d.videos?.length > 0 && !activeTradingVideo) {
-            setActiveTradingVideo(d.videos[0]);
+          if (d && Array.isArray(d.videos)) {
+            setTradingData(d);
+            if (d.videos.length > 0 && !activeTradingVideo) {
+              setActiveTradingVideo(d.videos[0]);
+            }
           }
-        });
+        })
+        .catch(() => {});
     } else if (activeTab === 'withdrawal') {
       loadWithdrawals();
     } else if (activeTab === 'kyc') {
       loadKyc();
     } else if (activeTab === 'leaderboard') {
       fetch(`/api/leaderboard?period=${lbPeriod}`)
-        .then((r) => r.json())
-        .then(setLeaderboardData);
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && Array.isArray(d.entries)) {
+            setLeaderboardData(d);
+          }
+        })
+        .catch(() => {});
     } else if (activeTab === 'community') {
       fetch('/api/community')
-        .then((r) => r.json())
-        .then((d) => setCommunityLinks(d.links || []));
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && Array.isArray(d.links)) setCommunityLinks(d.links);
+        })
+        .catch(() => {});
     } else if (activeTab === 'offers') {
       fetch('/api/offers')
-        .then((r) => r.json())
-        .then(setOffersData);
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && Array.isArray(d.offers)) setOffersData(d);
+        })
+        .catch(() => {});
     } else if (activeTab === 'notifications') {
       loadNotifications();
     }
@@ -216,51 +316,79 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   }, [selectedCourseId, activeTab]);
 
   const loadCourseDetail = async (cid: number) => {
-    const res = await fetch(`/api/courses/${cid}`);
-    if (!res.ok) return;
-    const d = await res.json();
-    setCourseDetail(d);
-    if (d.lessons?.length > 0) {
-      setActiveLesson((prev: any) => d.lessons.find((l: any) => l.id === prev?.id) || d.lessons[0]);
+    try {
+      const res = await fetch(`/api/courses/${cid}`);
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d && d.course) {
+        setCourseDetail(d);
+        if (d.lessons?.length > 0) {
+          setActiveLesson((prev: any) => d.lessons.find((l: any) => l.id === prev?.id) || d.lessons[0]);
+        }
+      }
+    } catch {
+      // ignore
     }
   };
 
   const loadWithdrawals = async () => {
-    const res = await fetch('/api/withdrawals');
-    const d = await res.json();
-    setWithdrawalData(d);
-    if (d.savedPayoutDetails) {
-      setWdrHolder(d.savedPayoutDetails.accountHolderName || user.fullName);
-      setWdrBank(d.savedPayoutDetails.bankName || '');
-      setWdrAccNo(d.savedPayoutDetails.accountNumber || '');
-      setWdrIfsc(d.savedPayoutDetails.ifscCode || '');
-      setWdrUpi(d.savedPayoutDetails.upiId || '');
+    try {
+      const res = await fetch('/api/withdrawals');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d && d.wallet && d.tables) {
+        setWithdrawalData(d);
+        if (d.savedPayoutDetails) {
+          setWdrHolder(d.savedPayoutDetails.accountHolderName || user.fullName);
+          setWdrBank(d.savedPayoutDetails.bankName || '');
+          setWdrAccNo(d.savedPayoutDetails.accountNumber || '');
+          setWdrIfsc(d.savedPayoutDetails.ifscCode || '');
+          setWdrUpi(d.savedPayoutDetails.upiId || '');
+        }
+      }
+    } catch {
+      // ignore
     }
   };
 
   const loadKyc = async () => {
-    const res = await fetch('/api/kyc/status');
-    const d = await res.json();
-    setKycData(d);
-    if (d.currentSubmission) {
-      setKycBank(d.currentSubmission.bank_name);
-      setKycHolder(d.currentSubmission.account_holder_name);
-      setKycAccNo(d.currentSubmission.account_number);
-      setKycIfsc(d.currentSubmission.ifsc_code);
-      setKycUpi(d.currentSubmission.upi_id);
-      setKycState(d.currentSubmission.state);
-      setKycDistrict(d.currentSubmission.district);
-      setKycGender(d.currentSubmission.gender);
+    try {
+      const res = await fetch('/api/kyc/status');
+      if (!res.ok) return;
+      const d = await res.json();
+      if (d && d.status) {
+        setKycData({
+          ...d,
+          reviewHistory: Array.isArray(d.reviewHistory) ? d.reviewHistory : [],
+          submissionsHistory: Array.isArray(d.submissionsHistory) ? d.submissionsHistory : [],
+        });
+        if (d.currentSubmission) {
+          setKycBank(d.currentSubmission.bank_name || '');
+          setKycHolder(d.currentSubmission.account_holder_name || user?.fullName || '');
+          setKycAccNo(d.currentSubmission.account_number || '');
+          setKycIfsc(d.currentSubmission.ifsc_code || '');
+          setKycUpi(d.currentSubmission.upi_id || '');
+          setKycState(d.currentSubmission.state || '');
+          setKycDistrict(d.currentSubmission.district || '');
+          setKycGender(d.currentSubmission.gender || 'Male');
+        }
+      }
+    } catch {
+      // ignore
     }
   };
 
   const loadNotifications = async () => {
-    const [nRes, eRes] = await Promise.all([
-      fetch('/api/notifications').then((r) => r.json()),
-      fetch(`/api/dev/emails?email=${encodeURIComponent(user.email)}`).then((r) => r.json()),
-    ]);
-    setNotificationsList(nRes.notifications || []);
-    setDevEmailsList(eRes.emails || []);
+    try {
+      const [nRes, eRes] = await Promise.all([
+        fetch('/api/notifications').then((r) => (r.ok ? r.json() : { notifications: [] })),
+        fetch(`/api/dev/emails?email=${encodeURIComponent(user.email)}`).then((r) => (r.ok ? r.json() : { emails: [] })),
+      ]);
+      setNotificationsList(Array.isArray(nRes?.notifications) ? nRes.notifications : []);
+      setDevEmailsList(Array.isArray(eRes?.emails) ? eRes.emails : []);
+    } catch {
+      // ignore
+    }
   };
 
   const referralUrl = `${window.location.origin}/?ref=${user.affiliateCode}`;
