@@ -584,7 +584,7 @@ textarea {
 }
 
 .app-main {
-  padding: 1.5rem;
+  padding: 1rem;
   overflow-x: hidden;
 }
 
@@ -598,6 +598,7 @@ textarea {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border: 1px solid var(--border-neutral);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
@@ -655,6 +656,7 @@ textarea {
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
@@ -689,3 +691,208 @@ textarea {
   color: #04130d;
   border-color: var(--color-primary);
 }
+
+/* ========================================================================= */
+/* ANDROID MOBILE UI & TOUCH ERGONOMICS                                      */
+/* ========================================================================= */
+
+.android-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 979px) {
+  body {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Convert tall 12-item sidebar into a compact sticky horizontal touch pill bar on Android */
+  .app-sidebar {
+    position: sticky;
+    top: 3.85rem;
+    z-index: 45;
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.45rem;
+    padding: 0.55rem 0.75rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border-strong);
+    background: rgba(18, 24, 22, 0.96);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-sidebar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide bulky sidebar profile card on mobile so pills start immediately */
+  .app-sidebar > div:first-child {
+    display: none !important;
+  }
+
+  .sidebar-item {
+    width: auto;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+    border: 1px solid var(--border-neutral);
+    background: var(--bg-elevated);
+    border-radius: 999px;
+    gap: 0.4rem;
+  }
+
+  .sidebar-item.active {
+    background: var(--color-primary);
+    color: #04130d;
+    border-color: var(--color-primary);
+  }
+
+  /* Native Android Fixed Bottom Navigation Bar */
+  .android-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 85;
+    height: calc(62px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: rgba(14, 19, 18, 0.97);
+    backdrop-filter: blur(16px);
+    border-top: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.55);
+  }
+
+  .android-nav-btn {
+    flex: 1;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    font-size: 0.68rem;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.15s ease;
+  }
+
+  .android-nav-btn.active {
+    color: var(--color-primary);
+  }
+}
+
+@media (max-width: 640px) {
+  .container {
+    padding: 0 0.9rem;
+  }
+
+  .header-inner {
+    height: 3.85rem;
+    gap: 0.5rem;
+  }
+
+  .brand-crest {
+    width: 2rem;
+    height: 2rem;
+    font-size: 1rem;
+  }
+
+  .brand-title {
+    font-size: 0.96rem;
+  }
+
+  .brand-subtitle,
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .header-actions {
+    gap: 0.35rem;
+  }
+
+  .header-actions .btn-sm {
+    padding: 0.38rem 0.62rem;
+    font-size: 0.74rem;
+  }
+
+  /* 2-column compact KPI grid on Android phones */
+  .grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+
+  .surface-card {
+    padding: 1.05rem;
+  }
+
+  .hero-section {
+    padding: 1.85rem 0 2.5rem;
+  }
+
+  .hero-title {
+    font-size: 1.75rem;
+    line-height: 1.22;
+  }
+
+  .hero-description {
+    font-size: 0.92rem;
+    margin-bottom: 1.35rem;
+  }
+
+  .hero-cta-row {
+    flex-direction: column;
+    gap: 0.65rem;
+    margin-bottom: 1.75rem;
+  }
+
+  .hero-cta-row .btn {
+    width: 100%;
+  }
+
+  .hero-3d-frame {
+    min-height: 290px;
+  }
+
+  .section-block {
+    padding: 2.5rem 0;
+  }
+
+  /* Prevent Android Chrome auto-zoom on input focus & ensure 44px touch targets */
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: 16px;
+    min-height: 44px;
+    padding: 0.6rem 0.8rem;
+  }
+
+  /* Bottom-sheet modal ergonomics on Android */
+  .modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-card {
+    max-width: 100%;
+    max-height: 92dvh;
+    border-radius: 18px 18px 0 0;
+    padding: 1.25rem 1.1rem calc(1.5rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.78rem;
+  }
+}
+

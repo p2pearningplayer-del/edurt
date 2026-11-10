@@ -5,6 +5,9 @@
  * Username: u591469534_educt
  */
 
+@ini_set('display_errors', '0');
+@error_reporting(0);
+
 define('DB_HOST', getenv('MYSQL_HOST') ?: '127.0.0.1');
 define('DB_PORT', getenv('MYSQL_PORT') ?: '3306');
 define('DB_NAME', getenv('MYSQL_DATABASE') ?: 'u591469534_educ');
@@ -22,28 +25,32 @@ function getLearnUpPdo(): ?PDO {
     if ($pdo !== null) {
         return $pdo;
     }
-    try {
-        $dsn = 'mysql:host=' . DB_HOST . ';port=' . DB_PORT . ';dbname=' . DB_NAME . ';charset=utf8mb4';
-        $pdo = new PDO($dsn, DB_USER, DB_PASS, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        ]);
-        ensureMysqlSchemaAndSeed($pdo);
-        return $pdo;
-    } catch (Throwable $e) {
-        // Fallback to localhost socket if 127.0.0.1 fails on Hostinger
+
+    $candidates = [
+        ['host' => DB_HOST, 'db' => DB_NAME, 'user' => DB_USER, 'pass' => DB_PASS],
+        ['host' => 'localhost', 'db' => DB_NAME, 'user' => DB_USER, 'pass' => DB_PASS],
+        ['host' => '127.0.0.1', 'db' => 'u591469534_educ', 'user' => 'u591469534_educ', 'pass' => DB_PASS],
+        ['host' => 'localhost', 'db' => 'u591469534_educ', 'user' => 'u591469534_educ', 'pass' => DB_PASS],
+        ['host' => '127.0.0.1', 'db' => 'u591469534_educt', 'user' => 'u591469534_educt', 'pass' => DB_PASS],
+        ['host' => 'localhost', 'db' => 'u591469534_educt', 'user' => 'u591469534_educt', 'pass' => DB_PASS],
+    ];
+
+    foreach ($candidates as $c) {
         try {
-            $dsn = 'mysql:host=localhost;dbname=' . DB_NAME . ';charset=utf8mb4';
-            $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+            $dsn = 'mysql:host=' . $c['host'] . ';port=' . DB_PORT . ';dbname=' . $c['db'] . ';charset=utf8mb4';
+            $pdo = new PDO($dsn, $c['user'], $c['pass'], [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_TIMEOUT => 3,
             ]);
             ensureMysqlSchemaAndSeed($pdo);
             return $pdo;
-        } catch (Throwable $e2) {
-            return null;
+        } catch (Throwable $e) {
+            $pdo = null;
         }
     }
+
+    return null;
 }
 
 function ensureMysqlSchemaAndSeed(PDO $pdo): void {

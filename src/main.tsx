@@ -2,26 +2,10 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
+import { setupResilientJsonFetch } from './apiConnector.ts';
 
-// Automatically attach stored auth token to all /api/* requests for reliable session persistence on Hostinger & proxies
-const originalFetch = window.fetch.bind(window);
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-  const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-  if (urlStr.startsWith('/api')) {
-    const token = localStorage.getItem('edurt_token');
-    const headers = new Headers(init?.headers || {});
-    if (token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${token}`);
-      headers.set('X-Auth-Token', token);
-    }
-    return originalFetch(input, {
-      ...init,
-      headers,
-      credentials: init?.credentials || 'same-origin',
-    });
-  }
-  return originalFetch(input, init);
-};
+// Initialize 3-tier resilient JSON API connector (Express -> Hostinger PHP Gateway -> Local JSON DB)
+setupResilientJsonFetch();
 
 class GlobalErrorBoundary extends React.Component<
   { children: React.ReactNode },

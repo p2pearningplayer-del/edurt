@@ -43,6 +43,18 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '15mb' }));
 app.use(cookieParser());
 
+// Support /api/index.php?_route=/... requests for 100% parity with Hostinger PHP Gateway
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (req.path === '/api/index.php' && typeof req.query._route === 'string') {
+    const cleanRoute = req.query._route.startsWith('/') ? req.query._route : `/${req.query._route}`;
+    const q = new URLSearchParams(req.query as Record<string, string>);
+    q.delete('_route');
+    const qs = q.toString();
+    req.url = `/api${cleanRoute}${qs ? `?${qs}` : ''}`;
+  }
+  next();
+});
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 120,

@@ -5,6 +5,10 @@
  * and Hostinger Mail (team@learnupindia.com)
  */
 
+@ob_start();
+@ini_set('display_errors', '0');
+@error_reporting(0);
+
 require_once __DIR__ . '/db_bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -13,6 +17,7 @@ header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    @ob_end_clean();
     http_response_code(204);
     exit;
 }
@@ -22,6 +27,10 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 function jsonOut($data, int $status = 200): void {
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -29,13 +38,17 @@ function jsonOut($data, int $status = 200): void {
 
 $pdo = getLearnUpPdo();
 if (!$pdo) {
-    jsonOut(['error' => 'Database connection to u591469534_educ failed. Please check Hostinger MySQL credentials.'], 500);
+    jsonOut(['error' => 'Database connection to u591469534_educ failed. Please check Hostinger MySQL credentials.'], 503);
 }
 
 $method = $_SERVER['REQUEST_METHOD'];
-$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$path = preg_replace('#^/api#', '', $uri);
-if ($path === '') $path = '/';
+if (!empty($_GET['_route'])) {
+    $path = '/' . ltrim((string)$_GET['_route'], '/');
+} else {
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $path = preg_replace('#^/api(/index\.php)?#', '', $uri);
+    if ($path === '' || $path === false) $path = '/';
+}
 
 $rawBody = file_get_contents('php://input');
 $body = json_decode($rawBody, true) ?: [];

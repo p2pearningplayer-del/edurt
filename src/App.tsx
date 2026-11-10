@@ -9,6 +9,11 @@ import {
   X,
   CreditCard,
   Eye,
+  BookOpen,
+  Share2,
+  Wallet,
+  User,
+  LogOut,
 } from 'lucide-react';
 import { PublicWebsite } from './components/PublicWebsite.tsx';
 import { UserDashboard, type DashboardTab } from './components/UserDashboard.tsx';
@@ -95,6 +100,9 @@ export function App() {
     if (token) {
       localStorage.setItem('edurt_token', token);
     }
+    if (user?.email) {
+      localStorage.setItem('edurt_user_email', user.email);
+    }
     setCurrentUser(user);
     if (newOrder) {
       setPendingOrder(newOrder);
@@ -109,6 +117,7 @@ export function App() {
 
   const handleLogout = async () => {
     localStorage.removeItem('edurt_token');
+    localStorage.removeItem('edurt_user_email');
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch {
@@ -117,6 +126,7 @@ export function App() {
     setCurrentUser(null);
     setPendingOrder(null);
     setActiveView('public');
+    setMobileMenuOpen(false);
   };
 
   const siteConfig = siteData?.siteConfig || {};
@@ -209,7 +219,7 @@ export function App() {
                   onClick={() => setActiveView('public')}
                 >
                   <Globe size={14} />
-                  Public Site
+                  <span className="hide-on-mobile">Public</span> Site
                 </button>
                 <button
                   id="switch-dashboard-view-btn"
@@ -217,7 +227,7 @@ export function App() {
                   onClick={() => setActiveView('dashboard')}
                 >
                   <LayoutDashboard size={14} />
-                  User Dashboard
+                  <span className="hide-on-mobile">User</span> Dashboard
                 </button>
                 {currentUser.adminId && (
                   <button
@@ -226,7 +236,7 @@ export function App() {
                     onClick={() => setActiveView('admin')}
                   >
                     <Shield size={14} />
-                    Master Admin Panel
+                    <span className="hide-on-mobile">Master</span> Admin
                   </button>
                 )}
                 {pendingOrder && (
@@ -277,26 +287,89 @@ export function App() {
         {mobileMenuOpen && (
           <div
             style={{
-              padding: '1rem 1.5rem',
+              padding: '1rem 1.25rem',
               background: 'var(--bg-surface)',
-              borderBottom: '1px solid var(--border-neutral)',
+              borderBottom: '1px solid var(--border-strong)',
               display: 'flex',
               flexDirection: 'column',
               gap: '0.65rem',
             }}
           >
-            <a href="#hero" onClick={() => setMobileMenuOpen(false)}>
+            <a
+              href="#hero"
+              onClick={() => {
+                setActiveView('public');
+                setMobileMenuOpen(false);
+              }}
+            >
               Home
             </a>
-            <a href="#about" onClick={() => setMobileMenuOpen(false)}>
+            <a
+              href="#about"
+              onClick={() => {
+                setActiveView('public');
+                setMobileMenuOpen(false);
+              }}
+            >
               About Us
             </a>
-            <a href="#packages" onClick={() => setMobileMenuOpen(false)}>
+            <a
+              href="#packages"
+              onClick={() => {
+                setActiveView('public');
+                setMobileMenuOpen(false);
+              }}
+            >
               Plans / Packages
             </a>
-            <a href="#contact" onClick={() => setMobileMenuOpen(false)}>
+            <a
+              href="#courses"
+              onClick={() => {
+                setActiveView('public');
+                setMobileMenuOpen(false);
+              }}
+            >
+              Courses
+            </a>
+            <a
+              href="#contact"
+              onClick={() => {
+                setActiveView('public');
+                setMobileMenuOpen(false);
+              }}
+            >
               Contact Us
             </a>
+            {currentUser && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid var(--border-neutral)' }}>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setActiveView('dashboard');
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <LayoutDashboard size={14} />
+                  User Dashboard
+                </button>
+                {currentUser.adminId && (
+                  <button
+                    className="btn btn-accent btn-sm"
+                    onClick={() => {
+                      setActiveView('admin');
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <Shield size={14} />
+                    Master Admin Panel
+                  </button>
+                )}
+                <button className="btn btn-danger btn-sm" onClick={handleLogout}>
+                  <LogOut size={14} />
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         )}
       </header>
@@ -333,6 +406,129 @@ export function App() {
           }}
         />
       )}
+
+      {/* NATIVE ANDROID BOTTOM NAVIGATION BAR */}
+      <nav className="android-bottom-nav" aria-label="Android Mobile Navigation">
+        {currentUser ? (
+          <>
+            <button
+              className={`android-nav-btn ${activeView === 'dashboard' && dashboardTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView('dashboard');
+                setDashboardTab('dashboard');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <LayoutDashboard size={18} />
+              <span>Dashboard</span>
+            </button>
+            <button
+              className={`android-nav-btn ${activeView === 'dashboard' && dashboardTab === 'affiliate' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView('dashboard');
+                setDashboardTab('affiliate');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <Share2 size={18} />
+              <span>Affiliate</span>
+            </button>
+            <button
+              className={`android-nav-btn ${activeView === 'dashboard' && dashboardTab === 'courses' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView('dashboard');
+                setDashboardTab('courses');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <BookOpen size={18} />
+              <span>Courses</span>
+            </button>
+            <button
+              className={`android-nav-btn ${activeView === 'dashboard' && dashboardTab === 'withdrawal' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView('dashboard');
+                setDashboardTab('withdrawal');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <Wallet size={18} />
+              <span>Withdraw</span>
+            </button>
+            {currentUser.adminId ? (
+              <button
+                className={`android-nav-btn ${activeView === 'admin' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveView('admin');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <Shield size={18} />
+                <span>Admin</span>
+              </button>
+            ) : (
+              <button
+                className={`android-nav-btn ${activeView === 'dashboard' && dashboardTab === 'account' ? 'active' : ''}`}
+                onClick={() => {
+                  setActiveView('dashboard');
+                  setDashboardTab('account');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                <User size={18} />
+                <span>Account</span>
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button
+              className={`android-nav-btn ${activeView === 'public' && !modalMode ? 'active' : ''}`}
+              onClick={() => {
+                setActiveView('public');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            >
+              <Globe size={18} />
+              <span>Home</span>
+            </button>
+            <button
+              className="android-nav-btn"
+              onClick={() => {
+                setActiveView('public');
+                document.getElementById('packages')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              <CreditCard size={18} />
+              <span>Packages</span>
+            </button>
+            <button
+              className="android-nav-btn"
+              onClick={() => {
+                setActiveView('public');
+                document.getElementById('courses')?.scrollIntoView({ behavior: 'smooth' });
+              }}
+            >
+              <BookOpen size={18} />
+              <span>Courses</span>
+            </button>
+            <button
+              className={`android-nav-btn ${modalMode === 'login' ? 'active' : ''}`}
+              onClick={() => setModalMode('login')}
+            >
+              <LogIn size={18} />
+              <span>Login</span>
+            </button>
+            <button
+              className={`android-nav-btn ${modalMode === 'register' ? 'active' : ''}`}
+              onClick={() => handleStartRegistration()}
+            >
+              <UserPlus size={18} />
+              <span>Register</span>
+            </button>
+          </>
+        )}
+      </nav>
 
       {/* AUTHENTICATION, OTP & RAZORPAY CHECKOUT MODALS */}
       <AuthAndCheckoutModals

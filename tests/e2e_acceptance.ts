@@ -169,6 +169,9 @@ async function runAcceptanceTests() {
     console.log(`✓ 5. Anti-Skip Video Rule, Quiz, Assignment Approval & Auto PDF Certificate (${revData.completion.certificateCode}) verified`);
 
     // 6. Withdrawal Rules (Min ₹500, Max 2/day IST, Atomic Reservation, Reject Release)
+    const { db, getBusinessDateIST } = await import('../server/db.ts');
+    db.prepare('DELETE FROM withdrawals WHERE user_id = 5 AND business_date_ist = ?').run(getBusinessDateIST());
+
     const aaravLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,6 +256,42 @@ async function runAcceptanceTests() {
     assert.strictEqual(infra.mysql.user, 'u591469534_educt');
     assert.strictEqual(infra.smtp.user, 'team@learnupindia.com');
     console.log('✓ 8. LearnUp India (learnupindia.com), Hostinger MySQL (u591469534_educ), & Hostinger Mail (team@learnupindia.com) verified');
+
+    // 9. Verify /api/index.php?_route=... Gateway & X-Auth-Token JSON Connection Parity
+    const gwLogin = await fetch(`${baseUrl}/api/index.php?_route=/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'aarav.mehta@gmail.com', password: 'Student@123' }),
+    });
+    assert.strictEqual(gwLogin.status, 200);
+    const gwLoginJson = await gwLogin.json();
+    assert.ok(gwLoginJson.token, 'Gateway login must return token');
+
+    for (const route of [
+      '/dashboard/overview',
+      '/user/profile',
+      '/affiliate/summary',
+      '/affiliate/referrals',
+      '/affiliate/commissions',
+      '/courses',
+      '/trading-videos',
+      '/withdrawals',
+      '/kyc/status',
+      '/leaderboard',
+      '/community',
+      '/offers',
+      '/notifications',
+    ]) {
+      const r = await fetch(`${baseUrl}/api/index.php?_route=${encodeURIComponent(route)}`, {
+        headers: { 'X-Auth-Token': gwLoginJson.token },
+      });
+      assert.strictEqual(r.status, 200, `Gateway route ${route} must return 200 JSON`);
+      const ct = r.headers.get('content-type') || '';
+      assert.ok(ct.includes('application/json'), `Gateway route ${route} must return application/json`);
+      const parsed = await r.json();
+      assert.ok(parsed && typeof parsed === 'object', `Gateway route ${route} must return valid JSON object`);
+    }
+    console.log('✓ 9. Resilient JSON Gateway (/api/index.php?_route=*) & X-Auth-Token verified across all 13 Dashboard tabs');
 
     console.log('\nALL PRD ACCEPTANCE TESTS PASSED SUCCESSFULLY!');
   } finally {
