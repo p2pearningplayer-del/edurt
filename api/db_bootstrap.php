@@ -53,6 +53,7 @@ function getLearnUpPdo(bool $forceNew = false): ?PDO {
             $dsn = 'mysql:host=' . $c['host'] . ';port=' . DB_PORT . ';dbname=' . $c['db'] . ';charset=utf8mb4';
             $inst = new PDO($dsn, $c['user'], $c['pass'], $options);
             ensureMysqlSchemaAndSeed($inst);
+            ensureMysqlMigrations($inst);
             $pdo = $inst;
             return $pdo;
         } catch (Throwable $e) {
@@ -62,6 +63,61 @@ function getLearnUpPdo(bool $forceNew = false): ?PDO {
 
     $pdo = null;
     return null;
+}
+
+/**
+ * Ensures schema migrations are applied to existing tables on Hostinger MySQL
+ */
+function ensureMysqlMigrations(?PDO $pdo): void {
+    if (!$pdo) return;
+    static $migrationDone = false;
+    if ($migrationDone) return;
+
+    try {
+        // 1. Ensure users table has activated_at column
+        $colCheck = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'activated_at'")->fetch();
+        if (!$colCheck) {
+            $pdo->exec("ALTER TABLE `users` ADD COLUMN `activated_at` LONGTEXT NULL AFTER `status`");
+            $pdo->exec("UPDATE `users` SET `activated_at` = `created_at` WHERE `status` = 'active' AND (`activated_at` IS NULL OR `activated_at` = '')");
+        }
+    } catch (Throwable $e) {
+        // Gracefully ignore if users table does not exist yet or permission limitation
+    }
+
+    $migrationDone = true;
+}
+
+/**
+ * Checks if users.activated_at column exists in the current MySQL connection
+ * and attempts auto-migration if missing.
+ */
+function hasUsersActivatedAtColumn(?PDO $pdo): bool {
+    static $hasActivatedAt = null;
+    if ($hasActivatedAt !== null) {
+        return $hasActivatedAt;
+    }
+    if (!$pdo) return false;
+    try {
+        $chk = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'activated_at'")->fetch();
+        if ($chk) {
+            $hasActivatedAt = true;
+            return true;
+        }
+        // Attempt immediate ALTER TABLE
+        $pdo->exec("ALTER TABLE `users` ADD COLUMN `activated_at` LONGTEXT NULL AFTER `status`");
+        $pdo->exec("UPDATE `users` SET `activated_at` = `created_at` WHERE `status` = 'active' AND (`activated_at` IS NULL OR `activated_at` = '')");
+        $hasActivatedAt = true;
+        return true;
+    } catch (Throwable $e) {
+        try {
+            $chk2 = $pdo->query("SHOW COLUMNS FROM `users` LIKE 'activated_at'")->fetch();
+            $hasActivatedAt = !empty($chk2);
+            return $hasActivatedAt;
+        } catch (Throwable $e2) {
+            $hasActivatedAt = false;
+            return false;
+        }
+    }
 }
 
 /**
@@ -100,6 +156,7 @@ function executeWithRetry(?PDO &$pdo, string $sql, array $params = [], int $maxR
 }
 
 function ensureMysqlSchemaAndSeed(PDO $pdo): void {
+    ensureMysqlMigrations($pdo);
     try {
         $stmt = $pdo->query("SHOW TABLES LIKE 'offer_batches'");
         $hasBatches = $stmt && $stmt->fetchColumn();

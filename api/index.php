@@ -77,8 +77,10 @@ function getAuthenticatedUser(PDO $pdo, ?int $overrideId = null): ?array {
     $userId = $overrideId ?: extractTokenUserId();
     if (!$userId) return null;
 
+    $actCol = hasUsersActivatedAtColumn($pdo) ? 'u.activated_at' : 'NULL as activated_at';
+
     $stmt = $pdo->prepare("
-        SELECT u.id, u.email, u.mobile, u.status, u.activated_at,
+        SELECT u.id, u.email, u.mobile, u.status, {$actCol},
                up.full_name,
                ac.code as affiliate_code,
                au.id as admin_id,
@@ -446,8 +448,13 @@ try {
             $paymentId = (int)$pdo->lastInsertId();
 
             // Automatically transition user account status from Inactive to Active and stamp activated_at
-            $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
-                ->execute([$now, $now, $ord['user_id']]);
+            if (hasUsersActivatedAtColumn($pdo)) {
+                $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
+                    ->execute([$now, $now, $ord['user_id']]);
+            } else {
+                $pdo->prepare("UPDATE users SET status = 'active', updated_at = ? WHERE id = ?")
+                    ->execute([$now, $ord['user_id']]);
+            }
 
             // Guarantee unique affiliate code exists upon activation
             $affChk = $pdo->prepare("SELECT id FROM affiliate_codes WHERE user_id = ?");
@@ -1187,8 +1194,10 @@ try {
         $q = trim($_GET['q'] ?? '');
         $statusFilter = strtolower(trim($_GET['status'] ?? 'all'));
 
+        $actCol = hasUsersActivatedAtColumn($pdo) ? 'u.activated_at' : 'NULL as activated_at';
+
         $sql = "
-            SELECT u.id, u.email, u.mobile, u.status, u.activated_at, u.referred_by_code, u.acquisition_source, u.created_at,
+            SELECT u.id, u.email, u.mobile, u.status, {$actCol}, u.referred_by_code, u.acquisition_source, u.created_at,
                    up.full_name, up.date_of_birth, up.state, up.district,
                    ac.code as affiliate_code,
                    w.available_commission_inr, w.pending_commission_inr, w.bonus_amount_inr, w.total_withdrawn_inr,
@@ -1244,8 +1253,13 @@ try {
         $now = date('Y-m-d H:i:s');
 
         if ($nextStatus === 'active') {
-            $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
-                ->execute([$now, $now, $targetUid]);
+            if (hasUsersActivatedAtColumn($pdo)) {
+                $pdo->prepare("UPDATE users SET status = 'active', activated_at = COALESCE(activated_at, ?), updated_at = ? WHERE id = ?")
+                    ->execute([$now, $now, $targetUid]);
+            } else {
+                $pdo->prepare("UPDATE users SET status = 'active', updated_at = ? WHERE id = ?")
+                    ->execute([$now, $targetUid]);
+            }
 
             // Ensure affiliate code exists
             $affChk = $pdo->prepare("SELECT id FROM affiliate_codes WHERE user_id = ?");
